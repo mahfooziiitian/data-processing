@@ -18,6 +18,8 @@ uv run python examples/run_kappa_stream.py --replay # Kappa demo: reprocess the 
 uv run python examples/run_lambda_architecture.py --batch        # Lambda demo: batch layer
 uv run python examples/run_lambda_architecture.py --seed-speed 3 # Lambda demo: simulate gap events
 uv run python examples/run_lambda_architecture.py                # Lambda demo: speed + serve
+uv run python examples/run_data_mesh.py                 # Data Mesh demo: publish both domains + consumer
+uv run python examples/run_data_mesh.py --catalog-only   # Data Mesh demo: browse catalog, re-run consumer
 uv run pytest -v                    # run all tests
 uv run pytest tests/test_transform.py::test_clean_orders_drops_missing_customer_and_computes_line_total  # single test
 uv run --group docs mkdocs serve          # preview docs site at :8000 with live reload
@@ -25,7 +27,7 @@ uv run --group docs mkdocs build --strict # build docs, fail on warnings
 ```
 
 Equivalent `make` targets exist: `setup`, `up`, `down`, `test`, `run`,
-`run-kappa`, `run-lambda`, `docs`, `docs-serve`, `clean`.
+`run-kappa`, `run-lambda`, `run-data-mesh`, `docs`, `docs-serve`, `clean`.
 
 Tests do **not** require Docker/Postgres running — `tests/test_load.py` uses
 an in-memory SQLite engine, and `tests/test_extract.py` mocks the external
@@ -74,7 +76,8 @@ they can be tested/swapped independently:
   then insert), used by the Kappa and Lambda demos below —
   dialect-agnostic, so don't add Postgres-specific `ON CONFLICT`/`MERGE`
   syntax to it. `read_dataframe(table_name, engine)` reads a whole table
-  back (used by the Lambda demo's serving layer to read the batch view).
+  back (used by the Lambda demo's serving layer to read the batch view,
+  and by the Data Mesh demo's consumer to read each domain's product).
 
 `examples/run_pipeline.py` wires these three stages together into the
 runnable demo pipeline (`run()`); it is intentionally outside the library
@@ -138,6 +141,33 @@ Writes to `lambda_batch_view`/`lambda_speed_view` use
 `load_dataframe(..., if_exists="replace")` (each layer fully recomputes
 its own view every run); `lambda_serving_view` uses
 `upsert_dataframe()` instead.
+
+### Data Mesh demo (`src/data_proc/data_mesh/` + `examples/run_data_mesh.py`)
+
+A fourth, independent demo: it implements the **Data Mesh** pattern
+(decentralized domain ownership, data as a product, a self-serve catalog,
+federated computational governance) — see
+`.github/instructions/data-mesh.instructions.md` and
+`docs/explanation/architecture.md#data-mesh-architecture-demo`.
+`domains/customers_domain.py` and `domains/orders_domain.py` each own
+their own source data and `publish()` logic end-to-end and **must never
+import each other** — `customers_domain`'s product never contains order
+fields and `orders_domain`'s product never contains customer identity
+fields; a consumer joins the two published products itself instead (see
+`examples/run_data_mesh.py`'s `run_consumer()`, which discovers both via
+`catalog.get_product()` rather than importing either domain module
+directly). Every domain's `publish()` validates against both
+`contract.validate_schema()` and `governance.check_global_policies()`
+before writing anything, raising `ValueError` on any violation — a
+non-compliant product is never published. Key invariant: confirmed by
+`tests/test_data_mesh_domains.py`'s
+`test_customers_domain_build_product_contains_no_order_fields` and
+`test_orders_domain_build_product_contains_no_customer_identity_fields`.
+Each domain writes its own table (`data_mesh_customers_product`/
+`data_mesh_orders_product`) with `load_dataframe(..., if_exists="replace")`;
+the catalog (`data/processed/data_mesh_catalog.json`) is a JSON-backed
+registry, same spirit as `data_proc.kappa.event_log`'s file-based stand-in
+for a Kafka topic.
 
 ## Conventions
 

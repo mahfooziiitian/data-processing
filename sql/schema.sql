@@ -83,3 +83,35 @@ CREATE TABLE IF NOT EXISTS lambda_serving_view (
     total_spent     NUMERIC(10, 2) DEFAULT 0,
     last_order_date DATE
 );
+
+-- Populated by the Data Mesh demo (examples/run_data_mesh.py). Each
+-- domain owns and publishes only its own table: the customers domain
+-- never writes order activity, and the orders domain never writes
+-- customer identity fields (see data_proc.data_mesh.domains). The
+-- consumer view is produced by joining both products at read time, not by
+-- either domain, demonstrating self-serve cross-domain composition.
+CREATE TABLE IF NOT EXISTS data_mesh_customers_product (
+    customer_id     INTEGER PRIMARY KEY,
+    name            TEXT,
+    email           TEXT,
+    country         TEXT,
+    signup_date     DATE,
+    company         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS data_mesh_orders_product (
+    customer_id     INTEGER PRIMARY KEY,
+    order_count     INTEGER DEFAULT 0,
+    total_spent     NUMERIC(10, 2) DEFAULT 0,
+    last_order_date DATE
+);
+
+CREATE TABLE IF NOT EXISTS data_mesh_consumer_view (
+    customer_id     INTEGER PRIMARY KEY,
+    name            TEXT,
+    email           TEXT,
+    country         TEXT,
+    order_count     INTEGER DEFAULT 0,
+    total_spent     NUMERIC(10, 2) DEFAULT 0,
+    last_order_date DATE
+);

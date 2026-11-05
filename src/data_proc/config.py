@@ -25,6 +25,11 @@ class Settings:
     lambda_event_log: Path = BASE_DIR / "data" / "processed" / "lambda_events.jsonl"
     lambda_watermark: Path = BASE_DIR / "data" / "processed" / "lambda_watermark.json"
 
+    # Data Mesh demo: the self-serve catalog both domains publish their
+    # data products' metadata into (gitignored, like the rest of
+    # data/processed/).
+    data_mesh_catalog: Path = BASE_DIR / "data" / "processed" / "data_mesh_catalog.json"
+
     # Public demo API used to enrich customer data (no auth required).
     enrichment_api_url: str = os.getenv(
         "ENRICHMENT_API_URL", "https://jsonplaceholder.typicode.com/users"

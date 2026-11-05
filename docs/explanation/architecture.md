@@ -115,6 +115,7 @@ from being interactive or rendered from real data.
 | Schema | `sql/schema.sql` | Declarative DDL, auto-applied on Postgres container startup |
 | Kappa demo | `src/data_proc/kappa/`, `examples/run_kappa_stream.py` | Event-log + replay-based alternative to the batch pipeline — see [Kappa architecture demo](#kappa-architecture-demo) below |
 | Lambda demo | `src/data_proc/lambda_arch/`, `examples/run_lambda_architecture.py` | Separate batch + speed layers merged by a serving layer — see [Lambda architecture demo](#lambda-architecture-demo) below |
+| Data Mesh demo | `src/data_proc/data_mesh/`, `examples/run_data_mesh.py` | Decentralized domain ownership, data-as-a-product, a self-serve catalog, and federated governance — see [Data Mesh architecture demo](#data-mesh-architecture-demo) below |
 
 ## Design decisions
 
@@ -244,3 +245,75 @@ already included) would produce — see
 `test_serving_result_matches_batch_layer_once_batch_absorbs_the_gap`, and
 `docs/how-to/run-lambda-demo.md` for a hands-on walkthrough (batch → seed
 gap events → speed+serve → batch again, watching the gap close).
+
+## Data Mesh architecture demo
+
+Where Kappa and Lambda above are both about *how* one team processes data,
+**Data Mesh** — `src/data_proc/data_mesh/` + `examples/run_data_mesh.py` —
+is an organizational pattern about *who owns* data and *how teams
+interoperate* without a central data-engineering bottleneck. This demo
+maps its four commonly cited principles onto two independent domains:
+
+- **Domain-oriented decentralized ownership** — `domains/customers_domain.py`
+  and `domains/orders_domain.py` each own their own source data and
+  publish logic end-to-end. Neither module imports the other; a shared
+  utility would be the only acceptable coupling, and this demo has none —
+  they share nothing but the generic platform modules below.
+- **Data as a product** — each domain publishes a
+  `contract.DataContract`-described **data product**, not just a bare
+  table: a name, owner, version, free-text description, and a declared
+  schema (`contract.validate_schema()` checks a DataFrame against it
+  before publish).
+- **Self-serve data infrastructure as a platform** — `contract.py` and
+  `catalog.py` are the domain-agnostic platform every domain reuses to
+  validate and register its product. `examples/run_data_mesh.py`'s
+  consumer step discovers both products purely through
+  `catalog.get_product()` — it never imports `customers_domain`/
+  `orders_domain` directly — demonstrating that a new consumer can be
+  added without either domain team's involvement.
+- **Federated computational governance** — `governance.py` defines global
+  policies (naming convention, non-empty owner, minimum description
+  length, declared SLA) once, centrally; each domain's own `publish()`
+  function enforces them on itself (`governance.check_global_policies()`)
+  before writing anything. Governance is global in *definition*, federated
+  in *enforcement* — there is no central gatekeeper service a domain must
+  ask permission from.
+
+```mermaid
+flowchart TB
+    subgraph customers["Customers domain (owns customer identity)"]
+        ccsv["data/raw/customers.csv\n+ enrichment API"]
+        cbuild["build_product()"]
+        ccsv --> cbuild
+    end
+    subgraph orders["Orders domain (owns order activity)"]
+        ocsv["data/raw/orders.csv"]
+        obuild["build_product()"]
+        ocsv --> obuild
+    end
+
+    cbuild -->|validate: contract + governance| cpub["publish()"]
+    obuild -->|validate: contract + governance| opub["publish()"]
+    cpub --> ctable[("data_mesh_customers_product")]
+    opub --> otable[("data_mesh_orders_product")]
+    cpub -.->|register| catalog[("self-serve catalog\ndata_mesh_catalog.json")]
+    opub -.->|register| catalog
+
+    catalog -.->|discover, no direct import| consumer["CONSUMER\nexamples/run_data_mesh.py"]
+    ctable --> consumer
+    otable --> consumer
+    consumer --> view[("data_mesh_consumer_view")]
+```
+
+Unlike Kappa/Lambda's correctness invariants (replay vs. incremental,
+batch vs. speed), the property this demo is built to showcase is a
+*boundary* invariant: `customers_domain`'s product never contains order
+fields and `orders_domain`'s product never contains customer identity
+fields — see `tests/test_data_mesh_domains.py`'s
+`test_customers_domain_build_product_contains_no_order_fields` and
+`test_orders_domain_build_product_contains_no_customer_identity_fields`.
+A non-compliant product (bad naming, missing owner, undeclared column)
+is rejected by `publish()` before it ever reaches the catalog or a table
+— see `tests/test_data_mesh_contract.py` and
+`tests/test_data_mesh_governance.py`. For a hands-on walkthrough, see
+`docs/how-to/run-data-mesh-demo.md`.

@@ -45,6 +45,18 @@ and
 [Architecture → Lambda architecture demo](explanation/architecture.md#lambda-architecture-demo)
 for the design rationale.
 
+### Data Mesh architecture demo
+
+`examples/run_data_mesh.py` + `src/data_proc/data_mesh/` demonstrate the
+**Data Mesh** pattern: two independent domains (customers, orders) each
+publish their own data product through a shared, self-serve catalog, and
+a consumer discovers and joins both products without either domain
+knowing the consumer exists. See
+[How to run the Data Mesh demo](how-to/run-data-mesh-demo.md) for a
+walkthrough and
+[Architecture → Data Mesh architecture demo](explanation/architecture.md#data-mesh-architecture-demo)
+for the design rationale.
+
 ## Quickstart
 
 ```bash
@@ -71,11 +83,13 @@ docker compose exec postgres psql -U postgres -d data_processing_demo \
 ├── src/data_proc/etl/            Reusable extract.py / transform.py / load.py library
 ├── src/data_proc/kappa/          Event log, checkpoint, state, fold (Kappa demo library)
 ├── src/data_proc/lambda_arch/    Batch/speed/serving layers (Lambda demo library)
+├── src/data_proc/data_mesh/      Contract/governance/catalog + two domains (Data Mesh demo library)
 ├── examples/run_pipeline.py      Demo script: wires extract -> transform -> load
 ├── examples/run_kappa_stream.py  Demo script: single stream path + replay
 ├── examples/run_lambda_architecture.py  Demo script: batch + speed + serving layers
+├── examples/run_data_mesh.py     Demo script: publish two domains + self-serve consumer join
 ├── sql/schema.sql                PostgreSQL DDL, auto-applied by docker-compose
-├── tests/                        pytest unit tests for each ETL/kappa/lambda module
+├── tests/                        pytest unit tests for each ETL/kappa/lambda/data_mesh module
 ├── docker-compose.yml            Local PostgreSQL for the demo
 └── docs/                         This documentation site (MkDocs)
 ```

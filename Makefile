@@ -24,6 +24,9 @@ run-kappa:
 run-lambda:
 	uv run python examples/run_lambda_architecture.py
 
+run-data-mesh:
+	uv run python examples/run_data_mesh.py
+
 docs:
 	uv run --group docs mkdocs build --strict
 

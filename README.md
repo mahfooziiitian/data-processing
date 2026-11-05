@@ -70,6 +70,24 @@ a full walkthrough and
 [`docs/explanation/architecture.md`](docs/explanation/architecture.md#lambda-architecture-demo)
 for the design rationale.
 
+### Data Mesh architecture demo
+
+`examples/run_data_mesh.py` + `src/data_proc/data_mesh/` demonstrate the
+**Data Mesh** pattern: two independent domains (customers, orders) each
+publish their own data product through a shared, self-serve catalog, and
+a consumer discovers and joins both products without either domain
+knowing the consumer exists.
+
+```bash
+uv run python examples/run_data_mesh.py                 # publish both domains + run the consumer
+uv run python examples/run_data_mesh.py --catalog-only   # skip publishing; just browse the catalog
+```
+
+See [`docs/how-to/run-data-mesh-demo.md`](docs/how-to/run-data-mesh-demo.md)
+for a full walkthrough and
+[`docs/explanation/architecture.md`](docs/explanation/architecture.md#data-mesh-architecture-demo)
+for the design rationale.
+
 ## Quickstart
 
 This project uses [uv](https://docs.astral.sh/uv/) for Python dependency
@@ -123,11 +141,13 @@ make docs-serve   # serves http://127.0.0.1:8000 with live reload
 ├── src/data_proc/etl/            Reusable extract.py / transform.py / load.py library
 ├── src/data_proc/kappa/          Event log, checkpoint, state, fold (Kappa demo library)
 ├── src/data_proc/lambda_arch/    Batch/speed/serving layers (Lambda demo library)
+├── src/data_proc/data_mesh/      Contract/governance/catalog + two domains (Data Mesh demo library)
 ├── examples/run_pipeline.py      Demo script: wires extract -> transform -> load
 ├── examples/run_kappa_stream.py  Demo script: single stream path + replay
 ├── examples/run_lambda_architecture.py  Demo script: batch + speed + serving layers
+├── examples/run_data_mesh.py     Demo script: publish two domains + self-serve consumer join
 ├── sql/schema.sql                PostgreSQL DDL, auto-applied by docker-compose
-├── tests/                        pytest unit tests for each ETL/kappa/lambda module
+├── tests/                        pytest unit tests for each ETL/kappa/lambda/data_mesh module
 ├── docker-compose.yml            Local PostgreSQL for the demo
 ├── docs/                         Architecture, concepts, and setup docs (MkDocs site)
 ├── mkdocs.yml                    MkDocs site configuration
