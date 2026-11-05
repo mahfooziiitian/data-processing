@@ -1,4 +1,0 @@
-Flask==2.1.0
-pandas<=1.4.2
-Flask-HTTPAuth<=4.7.0
-click<=8.0

@@ -1,1 +1,0 @@
-\COPY users FROM '/tmp/processed_user.csv' DELIMITER ',' CSV;

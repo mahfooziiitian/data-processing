@@ -1,8 +1,0 @@
-version: "3.1"
-services:
-  events_api:
-    build: .
-    container_name: events-api
-    image: events-api:1.0
-    ports:
-      - "5000:5000"
