@@ -22,7 +22,7 @@ docs:
 	uv run --group docs mkdocs build --strict
 
 docs-serve:
-	uv run --group docs mkdocs serve
+	uv run --group docs mkdocs serve --livereload
 
 clean:
 	docker compose down -v

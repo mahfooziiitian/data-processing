@@ -25,6 +25,7 @@ theme:
     - navigation.sections
     - navigation.top
     - content.code.copy
+    - navigation.tabs
 
 markdown_extensions:
   - admonition
