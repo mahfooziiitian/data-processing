@@ -10,6 +10,7 @@ nav:
       - Architecture: explanation/architecture.md
       - Concepts: explanation/concepts.md
       - Data Processing Patterns: explanation/data-processing-patterns.md
+      - Data Processing Patterns Interview: explanation/data-processing-patterns-interview.md
 
 theme:
   name: material

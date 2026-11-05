@@ -15,6 +15,9 @@ it. Nothing on this page is implemented in this repo (it has no Spark,
 Flink, or Delta Lake) — read it as background for designing a platform
 this demo could grow into, not as a how-to for this codebase.
 
+For a larger practice set, see
+[50 advanced interview questions](data-processing-patterns-interview.md).
+
 ## A/B/C: batch, micro-batch, and continuous stream processing
 
 - **A. Batch processing** — collects or reads a finite dataset and
