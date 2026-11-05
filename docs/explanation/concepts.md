@@ -58,6 +58,55 @@ operational complexity (state management, backpressure, exactly-once
 semantics) the team can support. Batch is the simplest to build, test, and
 reason about — which is why this demo starts there.
 
+### Full pattern classification
+
+Batch/micro-batch/stream only classify processing along one axis — *when*
+work is triggered. In practice, data engineers describe a pipeline along
+several independent axes at once, and the vocabulary below covers all of
+them:
+
+| Pattern | Description | Typical use case |
+| --- | --- | --- |
+| Batch processing | Processes bounded datasets | Daily ETL, financial reporting |
+| Micro-batch processing | Processes newly available data in small batches | Spark Structured Streaming |
+| Stream processing | Continuously processes unbounded data | Fraud detection, IoT |
+| Event-driven processing | Initiates processing in response to events | S3 file arrival, order events |
+| Incremental processing | Processes only new or changed records | CDC, incremental Delta `MERGE` |
+| Full refresh processing | Reprocesses the entire dataset | Small reference tables |
+| Parallel processing | Splits computation across workers or cores | Spark distributed transformations |
+| Distributed processing | Executes workloads across multiple machines | Spark, Flink |
+| Stateful processing | Maintains information across records/events | Window aggregation, stream joins |
+| Stateless processing | Processes each record without retaining cross-record state | Filtering, mapping |
+| Window-based processing | Groups data into time or count windows | Five-minute sales totals |
+| Lambda processing | Combines batch and speed processing paths | Historical + real-time analytics |
+| Kappa processing | Uses a unified stream-processing path | Event-driven analytics with replay |
+| MapReduce processing | Map, shuffle, and reduce operations | Large-scale aggregation |
+| MPP processing | Executes analytical queries across parallel compute nodes | Databricks SQL, Redshift |
+
+These aren't mutually exclusive — they're answers to different questions
+about the same pipeline, not alternatives to pick one from:
+
+- **When does it run?** batch / micro-batch / stream / event-driven
+- **How much does it reprocess?** incremental vs. full refresh
+- **Where does it run?** single-process vs. parallel vs. distributed vs. MPP
+- **Does it remember anything?** stateful (and window-based, a common
+  form of state) vs. stateless
+- **How is batch/stream reconciled at the architecture level?** Lambda vs.
+  Kappa (see §3–§4) — these describe the *system*, not a single job
+
+A Spark Structured Streaming pipeline can simultaneously be distributed,
+micro-batch, incremental, stateful, and window-based — all five labels
+describe one job from different angles.
+
+**Where this demo sits**, read across the same axes: it's **batch** (full
+CSV read each run) + **full refresh** (`if_exists="replace"`, see
+"Idempotent loads") + **stateless** at the per-row transform step
+(`clean_customers`, `clean_orders`) + a **stateful** aggregation only at
+the very end (`build_customer_order_summary`'s `groupby`) + single-process
+(no parallel/distributed/MPP execution — `pandas`, not Spark). Swapping
+`pandas` for PySpark (see "Where to go from here") would add the
+parallel/distributed/MPP axis without changing any of the others.
+
 ## 3. Lambda architecture: combining batch and stream
 
 A common way to get both the throughput/correctness of batch processing
