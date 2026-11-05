@@ -292,6 +292,25 @@ Reading the diagram left to right:
   shared platform tooling, federated governance) that let those
   independent pipelines interoperate — see §5.
 
+### Interview-ready summary
+
+If asked to explain this in a Data Architect interview, the concise
+version is:
+
+> Lambda and Kappa are data processing **architecture patterns** that
+> define how batch and streaming workloads are organized. Data mesh is a
+> decentralized data architecture **paradigm** focused on domain
+> ownership and governance. Data integration patterns such as ETL, ELT,
+> CDC, and event-driven integration operate *within* these architectures
+> to move and synchronize data between systems.
+
+**Key distinction:** architecture patterns (Lambda, Kappa, Data mesh)
+describe the overall system design; integration patterns (ETL/ELT, CDC,
+event streaming) describe the mechanisms for connecting and moving data
+within that system. The diagram above is one way to see both layers at
+once — integration patterns on the left feeding into an architecture
+pattern in the middle.
+
 ## 7. Multi-source ingestion
 
 Real pipelines rarely read from a single source. This demo combines a
