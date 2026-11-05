@@ -54,6 +54,24 @@ execution — e.g., 5,000 changed rows detected out of a 10-million-row
 source table, applied as an incremental `MERGE` into Delta Lake (inserts,
 updates, and deletes).
 
+<div id="incremental-vs-full-scale" class="d3-diagram"></div>
+<script>
+  window.addEventListener("DOMContentLoaded", function () {
+    renderBarChart("#incremental-vs-full-scale", [
+      { label: "Full source table", value: 10000000 },
+      { label: "Changed rows (incremental)", value: 5000 },
+    ]);
+  });
+</script>
+
+The bar chart renders both values on a shared **linear** scale on
+purpose: on a linear axis, 5,000 changed rows is visually dwarfed by 10
+million total rows, making the scale difference immediately obvious. That
+gap is exactly what incremental processing exploits — a full reprocess
+touches every row in the source every run, while incremental processing
+touches only what actually changed, regardless of how large the source
+table grows.
+
 Example using PySpark and Delta Lake:
 
 ```python
@@ -115,7 +133,23 @@ or disk growth.
 Windows organize events into finite groups, commonly based on event time
 — the three common shapes are **tumbling** (fixed-size, non-overlapping),
 **sliding** (fixed-size, overlapping), and **session** (gap-based,
-variable-size) windows.
+variable-size) windows:
+
+```text
+0         5         10        15        20        25        30   (event-time minutes)
+|---------|---------|---------|---------|---------|---------|
+
+Tumbling (10-minute windows, no overlap):
+[--------W1--------][--------W2--------][--------W3--------]
+
+Sliding (10-minute windows, 5-minute slide — each event can fall in multiple windows):
+[--------W1--------]
+          [--------W2--------]
+                    [--------W3--------]
+
+Session (gap-based; a new session starts after an idle gap, so size varies with activity):
+[----S1----]            [----------S2----------]      [S3]
+```
 
 Tumbling window example: aggregate revenue every five minutes, using
 Spark Structured Streaming:

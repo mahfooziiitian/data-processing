@@ -119,18 +119,26 @@ A common way to get both the throughput/correctness of batch processing
 runs two parallel paths over the same incoming data and merges their
 results at query time:
 
+```mermaid
+flowchart LR
+    data["Incoming data"]
+    batch["Batch layer\n(all data, recomputed)"]
+    speed["Speed layer\n(recent data only)"]
+    bviews[("Batch views")]
+    rviews[("Real-time views")]
+    merge{{"Serving layer\n(merge)"}}
+    query(["Query"])
+
+    data --> batch --> bviews --> merge
+    data --> speed --> rviews --> merge
+    merge --> query
 ```
-                              ┌─────────────┐    ┌──────────────┐
-                    ┌────────▶│ Batch layer │───▶│ Batch views  │──┐
-                    │         │ (all data,  │    │ (serving     │  │
-Incoming data ──────┤         │ recomputed) │    │  layer)      │  ├──▶ Merge ──▶ Query
-                    │         └─────────────┘    └──────────────┘  │
-                    │         ┌─────────────┐    ┌──────────────┐  │
-                    └────────▶│ Speed layer │───▶│ Real-time    │──┘
-                              │ (recent     │    │ views        │
-                              │  data only) │    │              │
-                              └─────────────┘    └──────────────┘
-```
+
+This repo implements exactly this split, end-to-end and runnable — see
+[Architecture → Lambda architecture demo](architecture.md#lambda-architecture-demo)
+(`src/data_proc/lambda_arch/`, `examples/run_lambda_architecture.py`) for
+the working `batch_layer`/`speed_layer`/`serving_layer` code this diagram
+describes conceptually.
 
 - **Batch layer** — processes the *complete* historical dataset on a
   schedule, recomputing exact, authoritative "batch views." This is
@@ -163,26 +171,17 @@ with each other.
 layer entirely: all data — historical and new — is treated as a single,
 replayable stream, processed by one codebase.
 
-```text
-All data (historical + new)
-        │
-        ▼
-┌────────────────────┐
-│ Immutable log        │  (e.g., Kafka/Pulsar — append-only, retained
-│ (append-only events) │   long enough to replay history, not just "new"
-└──────────┬──────────┘   events)
-           │
-           ▼
-┌────────────────────────┐
-│ Stream processing engine │──▶ Real-time results (normal operation:
-│ (e.g., Flink)             │    consume from the current offset)
-└──────────┬────────────────┘
-           │
-           ▼
-   Reprocessing for history
-   (replay the log from offset 0 through the *same* engine/code when
-    logic changes or a bug needs correcting, producing new output
-    rather than maintaining a separate batch path)
+```mermaid
+flowchart TB
+    data["All data\n(historical + new)"]
+    log[("Immutable log\n(append-only events)\ne.g. Kafka/Pulsar")]
+    engine["Stream processing engine\n(e.g. Flink)"]
+    realtime(["Real-time results\n(normal operation: consume\nfrom the current offset)"])
+    replay(["Reprocessing for history\n(replay from offset 0 through\nthe SAME engine/code)"])
+
+    data --> log --> engine
+    engine -->|consume forward| realtime
+    engine -->|replay from offset 0| replay
 ```
 
 - **Unified codebase** — the same stream-processing logic that produces
@@ -196,6 +195,13 @@ All data (historical + new)
   bug fix to `build_customer_order_summary`'s aggregation), Kappa replays
   the full event history through the corrected stream job to produce
   corrected output, instead of running a parallel batch recompute.
+
+This repo implements exactly this single-path-plus-replay pattern,
+runnable end-to-end — see
+[Architecture → Kappa architecture demo](architecture.md#kappa-architecture-demo)
+(`src/data_proc/kappa/`, `examples/run_kappa_stream.py`) for the working
+`event_log`/`stream_transform`/`checkpoint` code this diagram describes
+conceptually.
 
 | | Lambda | Kappa |
 | --- | --- | --- |
@@ -220,53 +226,68 @@ organization has *many* teams and pipelines: "who owns the data, and how
 do independent teams share it without funneling everything through one
 central team/platform?"
 
-```
-   Domain: Marketing       Domain: Finance         Domain: Sales
-  +-------------------+  +-------------------+  +-------------------+
-  | owns its own      |  | owns its own      |  | owns its own      |
-  | pipeline(s) + DB   |  | pipeline(s) + DB   |  | pipeline(s) + DB   |
-  |        |           |  |        |           |  |        |           |
-  |        v           |  |        v           |  |        v           |
-  |  "data product" <--|--|->"data product" <--|--|->"data product"   |
-  | (discoverable,     |  | (discoverable,     |  | (discoverable,     |
-  |  documented,       |  |  documented,       |  |  documented,       |
-  |  versioned)        |  |  versioned)        |  |  versioned)        |
-  +--------+----------+  +--------+----------+  +--------+----------+
-           |                      |                      |
-           +----------------------+----------------------+
-                                  |
-                                  v
-            Self-serve data platform (shared tooling/infra)
-            Federated governance (shared standards: schemas,
-            privacy, access control, cataloging) -- not shared data
+```mermaid
+flowchart TB
+    subgraph marketing["Domain: Marketing"]
+        mpipe["owns its own\npipeline(s) + DB"]
+        mproduct[("data product\ndiscoverable, documented,\nversioned")]
+        mpipe --> mproduct
+    end
+    subgraph finance["Domain: Finance"]
+        fpipe["owns its own\npipeline(s) + DB"]
+        fproduct[("data product\ndiscoverable, documented,\nversioned")]
+        fpipe --> fproduct
+    end
+    subgraph sales["Domain: Sales"]
+        spipe["owns its own\npipeline(s) + DB"]
+        sproduct[("data product\ndiscoverable, documented,\nversioned")]
+        spipe --> sproduct
+    end
+
+    mproduct -.->|catalog| platform
+    fproduct -.->|catalog| platform
+    sproduct -.->|catalog| platform
+    platform["Self-serve data platform (shared tooling/infra)\nFederated governance (shared standards: schemas,\nprivacy, access control, cataloging) — not shared data"]
 ```
 
 The four pillars of data mesh (Dehghani's formulation):
 
 - **Domain-oriented ownership** — the team closest to a business domain
   (marketing, finance, sales, service...) owns its data end-to-end,
-  instead of handing it off to one central data engineering team. In this
-  repo's terms: imagine `customers`/`orders` owned and pipelined by a
-  "sales" domain team using exactly this `extract.py`/`transform.py`/
-  `load.py` structure, rather than one shared team building every
-  domain's pipeline.
+  instead of handing it off to one central data engineering team. This
+  repo's Data Mesh demo implements exactly this split as two independent
+  domains, `src/data_proc/data_mesh/domains/customers_domain.py` and
+  `orders_domain.py`, each owning its own source data and publish logic
+  end-to-end with no shared business logic between them.
 - **Data as a product** — each domain publishes its output as a
   discoverable, documented, quality-guaranteed "data product" (not just a
-  raw table), with a clear owner and schema contract. `customer_order_summary`
-  is this repo's one data product; a real mesh would require it to carry
-  metadata (owner, freshness SLA, schema version) that other domains can
-  depend on without asking the owning team.
+  raw table), with a clear owner and schema contract. The demo's
+  `contract.DataContract` dataclass is exactly this: a name, owner,
+  version, description, and declared schema that
+  `contract.validate_schema()` checks before anything publishes.
 - **Self-serve data platform** — a shared platform (infra, orchestration,
   storage, observability tooling) that lets each domain build/operate its
-  own pipeline without reinventing infrastructure. `docker-compose.yml`,
-  `pyproject.toml`'s dependency groups, and the pytest/MkDocs tooling in
-  this repo are the kind of reusable platform primitives a mesh's
-  self-serve platform would standardize across domains.
+  own pipeline without reinventing infrastructure. The demo's
+  `catalog.py` is this platform's discovery piece: a consumer finds a
+  domain's product via `catalog.get_product()` without ever importing
+  that domain's module (see `examples/run_data_mesh.py`'s consumer step).
+  `docker-compose.yml`, `pyproject.toml`'s dependency groups, and the
+  pytest/MkDocs tooling in this repo are the same idea at the whole-repo
+  level — reusable platform primitives every demo shares.
 - **Federated computational governance** — global rules (schema
   conventions, data privacy rules, access control, interoperability
   standards) are agreed on centrally and enforced automatically, but
   applied by each domain to its own data — governance is federated, not
-  the data itself centralized.
+  the data itself centralized. The demo's `governance.check_global_policies()`
+  defines these rules once; each domain's own `publish()` function calls
+  it on itself before writing anything, rather than a central gatekeeper
+  service reviewing every release.
+
+See
+[Architecture → Data Mesh architecture demo](architecture.md#data-mesh-architecture-demo)
+for the full implementation walkthrough and
+[How to run the Data Mesh demo](../how-to/run-data-mesh-demo.md) for a
+hands-on tour.
 
 Data mesh is primarily an **organizational/architectural** pattern (who
 owns what, how it's shared) rather than a processing-latency pattern like
@@ -282,18 +303,49 @@ independent choices. In a real enterprise data platform they actually
 stack — each pattern answers a different layer's question. A diagram
 helps more than more prose here:
 
-```
- Source systems          Integration patterns         Data platform architecture            Consumption
- ──────────────          ────────────────────         ───────────────────────────           ───────────
- PostgreSQL  ──┐          CDC (row-level change   ┌──────────────────────────────┐
- Salesforce  ──┤          capture)                │  Lambda / Kappa               │
- REST APIs   ──┼───────▶  ETL / ELT (batch   ───▶ │  + Medallion layering:        │──────▶  BI
- Kafka       ──┘          loads)                   │   Bronze → Silver → Gold      │         Analytics
-                          Event streaming           └──────────────────────────────┘         Machine learning
-                          (continuous)                                                        APIs
+```mermaid
+flowchart LR
+    subgraph sources["Source systems"]
+        pg["PostgreSQL"]
+        sf["Salesforce"]
+        api["REST APIs"]
+        kafka0["Kafka"]
+    end
 
-                 Data mesh: domain ownership, data-product contracts, federated governance
-                 — spans every layer above; it is not another box in the data flow
+    subgraph integration["Integration patterns"]
+        cdc["CDC\n(row-level change capture)"]
+        etl["ETL / ELT\n(batch loads)"]
+        events["Event streaming\n(continuous)"]
+    end
+
+    subgraph platform["Data platform architecture"]
+        proc["Lambda / Kappa"]
+        medallion["Medallion layering:\nBronze → Silver → Gold"]
+        proc --> medallion
+    end
+
+    subgraph consumption["Consumption"]
+        bi["BI / Analytics"]
+        ml["Machine learning"]
+        apis["APIs"]
+    end
+
+    pg --> cdc
+    sf --> etl
+    api --> etl
+    kafka0 --> events
+    cdc --> proc
+    etl --> proc
+    events --> proc
+    medallion --> bi
+    medallion --> ml
+    medallion --> apis
+
+    mesh["Data mesh: domain ownership, data-product contracts,\nfederated governance — spans every layer above;\nit is not another box in the data flow"]
+    mesh -.-> sources
+    mesh -.-> integration
+    mesh -.-> platform
+    mesh -.-> consumption
 ```
 
 Reading the diagram left to right:
