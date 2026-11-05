@@ -107,6 +107,11 @@ the very end (`build_customer_order_summary`'s `groupby`) + single-process
 `pandas` for PySpark (see "Where to go from here") would add the
 parallel/distributed/MPP axis without changing any of the others.
 
+For a deeper treatment of these patterns — code-level comparisons,
+incremental/CDC `MERGE` examples, windowing, how real platforms combine
+several patterns at once, a decision guide, and interview-style Q&A — see
+[Data processing patterns: a deeper dive](data-processing-patterns.md).
+
 ## 3. Lambda architecture: combining batch and stream
 
 A common way to get both the throughput/correctness of batch processing

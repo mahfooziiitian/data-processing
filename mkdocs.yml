@@ -9,6 +9,7 @@ nav:
   - Explanation:
       - Architecture: explanation/architecture.md
       - Concepts: explanation/concepts.md
+      - Data Processing Patterns: explanation/data-processing-patterns.md
 
 theme:
   name: material
