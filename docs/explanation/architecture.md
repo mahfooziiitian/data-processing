@@ -82,7 +82,7 @@ This site supports two complementary diagram tools, both enabled in
 - **[D3.js](https://d3js.org/)** (v7, loaded from CDN) — for custom,
   data-driven visualizations that Mermaid can't express (e.g. charts
   computed from this repo's sample data). Shared helper functions live in
-  `docs/javascripts/d3-diagrams.js` and are loaded on every page via
+  `docs/assets/js/d3-diagrams.js` and are loaded on every page via
   `extra_javascript` in `mkdocs.yml`. To add a diagram: embed a `<div>`
   with a unique `id`, then call a helper from an inline `<script>` block
   after it (see the example below, which renders row counts from

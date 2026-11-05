@@ -43,4 +43,4 @@ markdown_extensions:
 
 extra_javascript:
   - https://d3js.org/d3.v7.min.js
-  - javascripts/d3-diagrams.js
+  - assets/js/d3-diagrams.js

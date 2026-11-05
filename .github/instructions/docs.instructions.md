@@ -30,12 +30,20 @@ applyTo: "docs/**/*.md,mkdocs.yml"
   `pymdownx.superfences.custom_fences` in `mkdocs.yml`, no extra files
   needed. For data-driven custom visualizations, use D3.js (v7, loaded
   from CDN via `extra_javascript`): add a `<div id="...">` plus an inline
-  `<script>` calling a helper from `docs/javascripts/d3-diagrams.js` (add
+  `<script>` calling a helper from `docs/assets/js/d3-diagrams.js` (add
   new reusable helpers there rather than duplicating D3 boilerplate per
   page). See `docs/explanation/architecture.md` for both patterns in use.
   Prefer plain ASCII diagrams in prose for quick sketches; reach for
   Mermaid/D3 when a diagram benefits from being interactive or rendered
   from real data.
+- **Static assets** live under `docs/assets/`: `docs/assets/js/` (custom
+  scripts, registered in `mkdocs.yml`'s `extra_javascript`),
+  `docs/assets/css/` (custom stylesheets, registered in `extra_css` —
+  not yet used, add the `extra_css:` key when the first stylesheet is
+  added), and `docs/assets/images/` (diagrams/screenshots referenced
+  from Markdown with relative paths, e.g.
+  `![alt](../assets/images/foo.png)`). Don't put assets directly under
+  `docs/` or inside a quadrant folder.
 - Validate changes with `uv run --group docs mkdocs build --strict` (fails
   the build on broken links/nav entries) before considering a docs change
   complete; preview with `uv run --group docs mkdocs serve`.
