@@ -82,3 +82,11 @@ Conceptual rationale for design choices: `docs/explanation/concepts.md`.
 - Docs under `docs/` are both human-readable Markdown and the MkDocs site
   source (`mkdocs.yml` → `docs_dir: docs`). Adding a new doc page requires
   also adding it to the `nav:` list in `mkdocs.yml`.
+- Documentation pages follow the Diátaxis folders and lowercase filename
+  rules documented in `.github/instructions/docs.instructions.md`. Preserve
+  the Material theme features `navigation.tabs`, `toc.integrate`, and
+  `navigation.footer` in `mkdocs.yml`; do not remove them during unrelated
+  edits.
+- For documentation changes, run `uv run --group docs mkdocs build --strict`,
+  `python3 .github/skills/diataxis-docs-audit/check_diataxis.py`, and
+  `git diff --check`. Do not commit the generated `site/` directory.

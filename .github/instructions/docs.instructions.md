@@ -25,6 +25,13 @@ applyTo: "docs/**/*.md,mkdocs.yml"
   filename is required by the Copilot CLI skill spec, not a `docs/` page.
 - Adding a new page under `docs/` requires also adding it to the `nav:`
   list in `mkdocs.yml`, or it won't appear in the site navigation.
+- **MkDocs configuration**: preserve the Material theme features
+  `navigation.tabs`, `toc.integrate`, and `navigation.footer`. These are
+  intentional site-navigation requirements and must not be removed during
+  unrelated configuration edits. Keep `navigation.sections`,
+  `navigation.top`, and `content.code.copy` enabled as the current baseline.
+  When changing `mkdocs.yml`, inspect the complete diff for accidental IDE
+  changes and rebuild with `--strict`.
 - **Diagrams**: use fenced ` ```mermaid ` code blocks for structural/flow
   diagrams (flowcharts, sequence/state/class) — enabled via
   `pymdownx.superfences.custom_fences` in `mkdocs.yml`, no extra files
@@ -46,7 +53,15 @@ applyTo: "docs/**/*.md,mkdocs.yml"
   `docs/` or inside a quadrant folder.
 - Validate changes with `uv run --group docs mkdocs build --strict` (fails
   the build on broken links/nav entries) before considering a docs change
-  complete; preview with `uv run --group docs mkdocs serve`.
+  complete; also run `git diff --check` and the Diátaxis audit for content
+  changes. Preview with `uv run --group docs mkdocs serve`.
+- **Content quality**: use descriptive headings, short paragraphs, Markdown
+  tables for genuinely tabular material, fenced code blocks with a language
+  identifier, and relative links between related pages. Keep explanation
+  pages focused on rationale/trade-offs; put task procedures in `how-to/`
+  or `tutorials/`, and stable lookup material in `reference/`.
+- **Generated/build output**: do not commit the `site/` directory or other
+  MkDocs build artifacts. Remove local build output before staging changes.
 - Keep `docs/index.md` (site home) and the root `README.md` roughly in
   sync for the quickstart section — `README.md` is GitHub-facing,
   `docs/index.md` is site-facing, and both should reflect the same
