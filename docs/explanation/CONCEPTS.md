@@ -1,3 +1,7 @@
+---
+diataxis: explanation
+---
+
 # Data Engineering Concepts Illustrated
 
 This POC is a teaching vehicle for the following foundational data

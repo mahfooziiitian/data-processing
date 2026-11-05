@@ -30,6 +30,7 @@ FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 FRONTMATTER_KEY_RE = re.compile(r"^diataxis:\s*([a-z-]+)\s*$", re.MULTILINE)
 
 ORDERED_STEP_RE = re.compile(r"^\s*\d+\.\s+\S", re.MULTILINE)
+NUMBERED_HEADING_RE = re.compile(r"^#{1,4}\s*\d+\.\s+\S", re.MULTILINE)
 STEP_HEADING_RE = re.compile(r"^#{1,4}\s*step\b", re.MULTILINE | re.IGNORECASE)
 HOWTO_HEADING_RE = re.compile(r"^#{1,4}\s*how to\b", re.MULTILINE | re.IGNORECASE)
 WHY_MARKER_RE = re.compile(
@@ -72,7 +73,7 @@ def infer_quadrant(path: pathlib.Path, docs_root: pathlib.Path, meta: dict[str, 
 def analyze(body: str) -> dict[str, int]:
     return {
         "ordered_steps": len(ORDERED_STEP_RE.findall(body)),
-        "step_headings": len(STEP_HEADING_RE.findall(body)),
+        "step_headings": len(STEP_HEADING_RE.findall(body)) + len(NUMBERED_HEADING_RE.findall(body)),
         "howto_headings": len(HOWTO_HEADING_RE.findall(body)),
         "why_markers": len(WHY_MARKER_RE.findall(body)),
         "table_rows": len(TABLE_ROW_RE.findall(body)),
@@ -136,7 +137,7 @@ def warnings_for(quadrant: str | None, stats: dict[str, int]) -> list[str]:
             )
 
     elif quadrant == "explanation":
-        if steps >= 6:
+        if stats["ordered_steps"] >= 6:
             warnings.append(
                 "Explanation page has many numbered steps — this may "
                 "actually be a how-to guide or tutorial in disguise."

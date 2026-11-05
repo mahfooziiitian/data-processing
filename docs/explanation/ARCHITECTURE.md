@@ -1,3 +1,7 @@
+---
+diataxis: explanation
+---
+
 # Architecture
 
 ## Overview
@@ -65,7 +69,7 @@ boundaries are designed to be swapped out independently).
   warning, returns an empty DataFrame) so the demo still runs fully offline.
 - **`if_exists="replace"` loads** make the pipeline idempotent and safe to
   re-run repeatedly for demo purposes; a production pipeline would use
-  incremental/upsert loads instead (see `docs/CONCEPTS.md`).
+  incremental/upsert loads instead (see `docs/explanation/CONCEPTS.md`).
 - **Docker Compose for Postgres only** — the Python pipeline runs on the
   host (or in CI) so it's trivial to step through with a debugger.
 

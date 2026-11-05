@@ -1,3 +1,7 @@
+---
+diataxis: tutorial
+---
+
 # Setup Guide
 
 ## Prerequisites

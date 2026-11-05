@@ -4,9 +4,11 @@ repo_url: https://github.com/mahfooziiitian/data-processing
 docs_dir: docs
 nav:
   - Home: index.md
-  - Architecture: ARCHITECTURE.md
-  - Concepts: CONCEPTS.md
-  - Setup Guide: SETUP.md
+  - Tutorials:
+      - Setup Guide: tutorials/SETUP.md
+  - Explanation:
+      - Architecture: explanation/ARCHITECTURE.md
+      - Concepts: explanation/CONCEPTS.md
 
 theme:
   name: material

@@ -25,18 +25,21 @@ should mostly be a short map, not itself fall into one of the four modes.
 
 ## Current mapping in this repo (verify before trusting — docs/ evolves)
 
-| File | Best-fit quadrant | Why |
+`docs/` is organized into quadrant subfolders, each file carrying a
+matching `diataxis:` frontmatter key:
+
+| File | Quadrant | Why |
 | --- | --- | --- |
 | `docs/index.md` | Landing page | Overview + links out, not a lesson/task/reference/theory page itself |
-| `docs/SETUP.md` | Tutorial | Numbered, linear, "do this then this" first-run walkthrough |
-| `docs/ARCHITECTURE.md` | Explanation | Discusses design/data-flow rationale, not actionable steps |
-| `docs/CONCEPTS.md` | Explanation | Teaches concepts (ETL, Lambda, Kappa, Data mesh, ...) with no steps to execute |
+| `docs/tutorials/SETUP.md` | Tutorial | Numbered, linear, "do this then this" first-run walkthrough |
+| `docs/explanation/ARCHITECTURE.md` | Explanation | Discusses design/data-flow rationale, not actionable steps |
+| `docs/explanation/CONCEPTS.md` | Explanation | Teaches concepts (ETL, Lambda, Kappa, Data mesh, ...) with no steps to execute |
 
-There is currently no **How-to guide** or **Reference** content in this
-repo (e.g. "how to add a new ETL source", "how to reset the demo
-database", a `schema.sql` reference page, a CLI/Makefile target
-reference). Flag this as a gap when auditing, but only create new pages
-if the user asks for them — don't invent content unprompted.
+`docs/how-to/` and `docs/reference/` exist (currently empty, holding only
+a `.gitkeep`) — they're reserved for content such as "how to add a new
+ETL source", "how to reset the demo database", or a `schema.sql`/CLI
+reference page. Don't invent content for them unprompted; only fill them
+in when the user asks for that specific guide/reference.
 
 ## How to audit docs/
 
