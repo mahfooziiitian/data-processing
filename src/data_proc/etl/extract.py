@@ -8,7 +8,7 @@ import logging
 import pandas as pd
 import requests
 
-from src.config import settings
+from data_proc.config import settings
 
 logger = logging.getLogger(__name__)
 

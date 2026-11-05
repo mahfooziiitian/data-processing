@@ -24,12 +24,12 @@ boundaries are designed to be swapped out independently).
                                │
                     ┌──────────▼──────────┐        ┌──────────────────────┐
                     │   EXTRACT            │◄───────┤ Public demo REST API │
-                    │ src/etl/extract.py   │        │ (customer enrichment)│
+                    │ src/data_proc/etl/extract.py   │        │ (customer enrichment)│
                     └──────────┬──────────┘        └──────────────────────┘
                                │ pandas DataFrames
                     ┌──────────▼──────────┐
                     │   TRANSFORM          │
-                    │ src/etl/transform.py │
+                    │ src/data_proc/etl/transform.py │
                     │ - clean & validate    │
                     │ - compute line totals │
                     │ - enrich customers    │
@@ -38,7 +38,7 @@ boundaries are designed to be swapped out independently).
                                │ pandas DataFrames
                     ┌──────────▼──────────┐
                     │   LOAD                │
-                    │ src/etl/load.py       │
+                    │ src/data_proc/etl/load.py       │
                     └──────────┬──────────┘
                                │ SQLAlchemy
                     ┌──────────▼──────────┐
@@ -57,9 +57,9 @@ diagram (now enabled site-wide — see
 flowchart TB
     raw["data/raw/\ncustomers.csv, orders.csv"]
     api["Public demo REST API\n(customer enrichment)"]
-    extract["EXTRACT\nsrc/etl/extract.py"]
-    transform["TRANSFORM\nsrc/etl/transform.py\nclean, validate, enrich, aggregate"]
-    load["LOAD\nsrc/etl/load.py"]
+    extract["EXTRACT\nsrc/data_proc/etl/extract.py"]
+    transform["TRANSFORM\nsrc/data_proc/etl/transform.py\nclean, validate, enrich, aggregate"]
+    load["LOAD\nsrc/data_proc/etl/load.py"]
     db[("PostgreSQL\ncustomers, orders,\ncustomer_order_summary")]
 
     raw --> extract
@@ -107,12 +107,12 @@ from being interactive or rendered from real data.
 
 | Component | File | Responsibility |
 |---|---|---|
-| Config | `src/config.py` | Single source of truth for paths, DB URL, API URL — all overridable via environment variables |
-| Extract | `src/etl/extract.py` | Pulls raw data from heterogeneous sources (CSV, REST API) into DataFrames; isolates I/O and failure handling |
-| Transform | `src/etl/transform.py` | Pure functions: cleaning, validation, joins, aggregation — no I/O, easy to unit test |
-| Load | `src/etl/load.py` | Persists DataFrames via SQLAlchemy; backend-agnostic (Postgres in this demo, SQLite in tests) |
-| Pipeline | `src/etl/pipeline.py` | Orchestrates the three stages and logs a run summary |
-| Schema | `src/db/schema.sql` | Declarative DDL, auto-applied on Postgres container startup |
+| Config | `src/data_proc/config.py` | Single source of truth for paths, DB URL, API URL — all overridable via environment variables |
+| Extract | `src/data_proc/etl/extract.py` | Pulls raw data from heterogeneous sources (CSV, REST API) into DataFrames; isolates I/O and failure handling |
+| Transform | `src/data_proc/etl/transform.py` | Pure functions: cleaning, validation, joins, aggregation — no I/O, easy to unit test |
+| Load | `src/data_proc/etl/load.py` | Persists DataFrames via SQLAlchemy; backend-agnostic (Postgres in this demo, SQLite in tests) |
+| Pipeline | `src/data_proc/etl/pipeline.py` | Orchestrates the three stages and logs a run summary |
+| Schema | `src/data_proc/db/schema.sql` | Declarative DDL, auto-applied on Postgres container startup |
 
 ## Design decisions
 
@@ -132,7 +132,7 @@ from being interactive or rendered from real data.
 - Swap `extract.py`'s CSV reads for a cloud object store (S3/GCS) or a
   streaming source (Kafka) without touching `transform.py` or `load.py`.
 - Introduce an orchestrator (Airflow/Dagster/Prefect) that calls
-  `src.etl.pipeline.run()` as a single task, or splits it into per-stage
+  `data_proc.etl.pipeline.run()` as a single task, or splits it into per-stage
   tasks with explicit dependencies.
 - Add a data-quality layer (e.g., Great Expectations) between transform and
   load to assert invariants before writing to the warehouse.

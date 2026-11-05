@@ -13,7 +13,7 @@ This repo is intentionally lightweight so it can serve as:
 
 ## What it does
 
-The pipeline (`src/etl/pipeline.py`) runs three stages:
+The pipeline (`src/data_proc/etl/pipeline.py`) runs three stages:
 
 1. **Extract** — reads `customers.csv` and `orders.csv` from `data/raw/`, and
    optionally fetches supplementary profile data from a public demo REST API
@@ -36,14 +36,14 @@ This project uses [uv](https://docs.astral.sh/uv/) for Python dependency
 management.
 
 ```bash
-# 1. Start PostgreSQL (applies src/db/schema.sql automatically)
+# 1. Start PostgreSQL (applies src/data_proc/db/schema.sql automatically)
 docker compose up -d
 
 # 2. Install dependencies (creates .venv automatically)
 uv sync --all-groups
 
 # 3. Run the pipeline
-uv run python -m src.etl.pipeline
+uv run python -m data_proc.etl.pipeline
 
 # 4. Inspect the results
 docker compose exec postgres psql -U postgres -d data_processing_demo \
@@ -77,16 +77,16 @@ make docs-serve   # serves http://127.0.0.1:8000 with live reload
 
 ```
 .
-├── data/raw/            Sample input CSVs (customers, orders)
-├── data/processed/      Reserved for pipeline output artifacts (gitignored)
-├── src/config.py        Centralized, environment-driven settings
-├── src/db/schema.sql    PostgreSQL DDL, auto-applied by docker-compose
-├── src/etl/             extract.py / transform.py / load.py / pipeline.py
-├── tests/               pytest unit tests for each ETL stage
-├── docker-compose.yml   Local PostgreSQL for the demo
-├── docs/                Architecture, concepts, and setup docs (MkDocs site)
-├── mkdocs.yml            MkDocs site configuration
-└── pyproject.toml       uv-managed project metadata and dependencies
+├── data/raw/                     Sample input CSVs (customers, orders)
+├── data/processed/               Reserved for pipeline output artifacts (gitignored)
+├── src/data_proc/config.py       Centralized, environment-driven settings
+├── src/data_proc/db/schema.sql   PostgreSQL DDL, auto-applied by docker-compose
+├── src/data_proc/etl/            extract.py / transform.py / load.py / pipeline.py
+├── tests/                        pytest unit tests for each ETL stage
+├── docker-compose.yml            Local PostgreSQL for the demo
+├── docs/                         Architecture, concepts, and setup docs (MkDocs site)
+├── mkdocs.yml                    MkDocs site configuration
+└── pyproject.toml                uv-managed project metadata and dependencies
 ```
 
 ## Testing

@@ -2,7 +2,7 @@
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-from src.etl import load
+from data_proc.etl import load
 
 
 def test_load_dataframe_writes_rows_to_table():

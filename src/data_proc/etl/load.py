@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 from sqlalchemy import Engine, create_engine
 
-from src.config import settings
+from data_proc.config import settings
 
 logger = logging.getLogger(__name__)
 

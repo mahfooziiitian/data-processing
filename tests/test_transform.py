@@ -1,7 +1,7 @@
 """Tests for the transform layer using small in-memory fixtures."""
 import pandas as pd
 
-from src.etl import transform
+from data_proc.etl import transform
 
 
 def test_clean_customers_normalizes_fields():

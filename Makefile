@@ -16,7 +16,7 @@ test:
 	uv run pytest -v
 
 run:
-	uv run python -m src.etl.pipeline
+	uv run python -m data_proc.etl.pipeline
 
 docs:
 	uv run --group docs mkdocs build --strict

@@ -12,7 +12,7 @@ engineering concepts. Each links to where it's implemented in the code.
 The three-stage pattern that structures most batch data pipelines:
 pull data from source systems, reshape/clean it, then persist it to a
 destination optimized for querying.
-→ `src/etl/extract.py`, `src/etl/transform.py`, `src/etl/load.py`
+→ `src/data_proc/etl/extract.py`, `src/data_proc/etl/transform.py`, `src/data_proc/etl/load.py`
 
 ## 2. Data processing patterns: how work gets triggered
 
@@ -29,7 +29,7 @@ of increasing latency requirements and operational complexity:
 This repo implements **batch processing**: `pipeline.run()` reads the full
 contents of `data/raw/*.csv` on every invocation and reloads the target
 tables from scratch (see "Idempotent loads" below). It is invoked on
-demand (`uv run python -m src.etl.pipeline`) or, in production, by a
+demand (`uv run python -m data_proc.etl.pipeline`) or, in production, by a
 scheduler (cron, Airflow, Dagster) — the pipeline code itself has no
 notion of scheduling.
 
@@ -134,7 +134,7 @@ Incoming data ──────┤         │ recomputed) │    │  layer)  
 
 - **Batch layer** — processes the *complete* historical dataset on a
   schedule, recomputing exact, authoritative "batch views." This is
-  exactly what `src/etl/pipeline.py` does today: it has strong consistency
+  exactly what `src/data_proc/etl/pipeline.py` does today: it has strong consistency
   but high latency (the view is only as fresh as the last full run).
 - **Speed layer** — processes only data arrived *since* the last batch
   run, producing approximate "real-time views" with low latency, to cover
@@ -372,7 +372,7 @@ flat-file source (CSV) with an HTTP API source, showing how to normalize
 heterogeneous inputs into a common representation (a pandas DataFrame)
 before merging them.
 → `extract_customers_csv()` + `extract_customer_enrichment_api()` in
-`src/etl/extract.py`
+`src/data_proc/etl/extract.py`
 
 ## 8. Data cleaning & validation
 
@@ -380,7 +380,7 @@ Raw data is messy. `clean_customers`/`clean_orders` demonstrate common
 cleaning operations: trimming whitespace, normalizing case, parsing dates,
 deduplication, and dropping records that fail referential checks (an order
 with no `customer_id`).
-→ `src/etl/transform.py`
+→ `src/data_proc/etl/transform.py`
 
 ## 9. Derived/computed fields
 
@@ -413,7 +413,7 @@ a mocked HTTP client instead of a live API).
 ## 13. Configuration as code
 
 All environment-specific values (DB connection string, API URL, timeouts)
-flow through a single `Settings` object (`src/config.py`) sourced from
+flow through a single `Settings` object (`src/data_proc/config.py`) sourced from
 environment variables — never hardcoded in business logic — so the same
 code runs unchanged across local, CI, and production environments.
 

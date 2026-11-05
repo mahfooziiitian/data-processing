@@ -1,5 +1,5 @@
 ---
-applyTo: "src/etl/**/*.py"
+applyTo: "src/data_proc/etl/**/*.py"
 ---
 
 # ETL module conventions
@@ -17,7 +17,7 @@ applyTo: "src/etl/**/*.py"
 - `load.py`'s `load_dataframe()` takes a generic SQLAlchemy `Engine` so it
   works against both Postgres (runtime) and SQLite (tests) — don't add
   Postgres-specific SQL inside it.
-- Import settings from `src.config.settings` (the module-level singleton);
+- Import settings from `data_proc.config.settings` (the module-level singleton);
   don't read `os.environ` directly in ETL modules.
 - If you add/rename a column or table produced by `transform.py`/`load.py`,
-  update `src/db/schema.sql` to match in the same change.
+  update `src/data_proc/db/schema.sql` to match in the same change.

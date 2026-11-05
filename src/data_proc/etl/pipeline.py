@@ -1,10 +1,10 @@
 """Pipeline orchestration: wires extract -> transform -> load together.
 
-Run directly with: `python -m src.etl.pipeline`
+Run directly with: `python -m data_proc.etl.pipeline`
 """
 import logging
 
-from src.etl import extract, transform, load
+from data_proc.etl import extract, transform, load
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)

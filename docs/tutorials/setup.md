@@ -22,7 +22,7 @@ This starts a `postgres:16-alpine` container on `localhost:5432` with:
 - password: `postgres`
 - database: `data_processing_demo`
 
-The schema in `src/db/schema.sql` is applied automatically on first
+The schema in `src/data_proc/db/schema.sql` is applied automatically on first
 container startup (via Postgres's `docker-entrypoint-initdb.d` mechanism).
 If you change the schema file after the container's data volume already
 exists, recreate the volume to re-apply it:
@@ -59,13 +59,13 @@ cp .env.example .env
 export DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/data_processing_demo
 ```
 
-Defaults in `src/config.py` already match the Docker Compose setup, so this
+Defaults in `src/data_proc/config.py` already match the Docker Compose setup, so this
 step is optional for a local demo run.
 
 ## 4. Run the pipeline
 
 ```bash
-uv run python -m src.etl.pipeline
+uv run python -m data_proc.etl.pipeline
 ```
 
 Expected log output ends with a summary like:
