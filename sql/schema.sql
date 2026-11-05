@@ -47,3 +47,39 @@ CREATE TABLE IF NOT EXISTS kappa_customer_order_summary (
     total_spent     NUMERIC(10, 2) DEFAULT 0,
     last_order_date DATE
 );
+
+-- Populated by the Lambda demo (examples/run_lambda_architecture.py).
+-- Three separate tables mirror the architecture's three layers: the batch
+-- layer fully replaces lambda_batch_view on each (slow) run; the speed
+-- layer fully replaces lambda_speed_view on each (fast, small-window) run;
+-- the serving layer upserts the merged result into lambda_serving_view,
+-- which is what a consumer should actually query.
+CREATE TABLE IF NOT EXISTS lambda_batch_view (
+    customer_id     INTEGER PRIMARY KEY,
+    name            TEXT,
+    email           TEXT,
+    country         TEXT,
+    order_count     INTEGER DEFAULT 0,
+    total_spent     NUMERIC(10, 2) DEFAULT 0,
+    last_order_date DATE
+);
+
+CREATE TABLE IF NOT EXISTS lambda_speed_view (
+    customer_id     INTEGER PRIMARY KEY,
+    name            TEXT,
+    email           TEXT,
+    country         TEXT,
+    order_count     INTEGER DEFAULT 0,
+    total_spent     NUMERIC(10, 2) DEFAULT 0,
+    last_order_date DATE
+);
+
+CREATE TABLE IF NOT EXISTS lambda_serving_view (
+    customer_id     INTEGER PRIMARY KEY,
+    name            TEXT,
+    email           TEXT,
+    country         TEXT,
+    order_count     INTEGER DEFAULT 0,
+    total_spent     NUMERIC(10, 2) DEFAULT 0,
+    last_order_date DATE
+);

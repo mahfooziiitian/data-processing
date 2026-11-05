@@ -114,6 +114,7 @@ from being interactive or rendered from real data.
 | Pipeline | `examples/run_pipeline.py` | Orchestrates the three stages and logs a run summary |
 | Schema | `sql/schema.sql` | Declarative DDL, auto-applied on Postgres container startup |
 | Kappa demo | `src/data_proc/kappa/`, `examples/run_kappa_stream.py` | Event-log + replay-based alternative to the batch pipeline — see [Kappa architecture demo](#kappa-architecture-demo) below |
+| Lambda demo | `src/data_proc/lambda_arch/`, `examples/run_lambda_architecture.py` | Separate batch + speed layers merged by a serving layer — see [Lambda architecture demo](#lambda-architecture-demo) below |
 
 ## Design decisions
 
@@ -184,3 +185,62 @@ state — see `tests/test_kappa_stream_transform.py`'s
 `test_incremental_folding_matches_full_replay` for this property verified
 directly, and `docs/how-to/run-kappa-demo.md` for a hands-on walkthrough
 (seed → process → cancel → replay).
+
+## Lambda architecture demo
+
+Where the Kappa demo above collapses everything into one path, the
+**Lambda architecture** — `src/data_proc/lambda_arch/` +
+`examples/run_lambda_architecture.py` — deliberately keeps two separate
+processing paths, merged at query time:
+
+- **Batch layer** (`batch_layer.recompute_batch_view()`) — slow but
+   always-correct: a full, stateless recompute of per-customer order
+   aggregates from the CSV snapshot *plus every event in the log so far*,
+   written to `lambda_batch_view`. It returns the event-log offset it
+   covered, persisted as a **watermark**
+   (`watermark.write_watermark()`) marking where the batch layer's
+   authority currently ends.
+- **Speed layer** (`speed_layer.compute_speed_increments()`) — fast but
+   narrow: aggregates only the events strictly after the watermark (the
+   "gap"), written to `lambda_speed_view`. It recomputes this small
+   window from scratch on every run rather than maintaining persisted
+   state, since the gap is assumed small.
+- **Serving layer** (`serving_layer.merge_views()`) — the query-time
+   merge: outer-joins the batch and speed views by `customer_id`, summing
+   counts/spend and taking the max order date, so a consumer querying
+   `lambda_serving_view` sees batch completeness plus speed recency
+   without the batch layer running continuously.
+
+```mermaid
+flowchart TB
+    csv["data/raw/\ncustomers.csv, orders.csv"]
+    gaplog[("lambda_events.jsonl\n(gap events)")]
+    batch["BATCH LAYER\nrecompute_batch_view()\nfull recompute, slow"]
+    speed["SPEED LAYER\ncompute_speed_increments()\ngap only, fast"]
+    serve["SERVING LAYER\nmerge_views()"]
+    bview[("lambda_batch_view")]
+    sview[("lambda_speed_view")]
+    servedview[("lambda_serving_view")]
+
+    csv --> batch
+    gaplog -->|ALL events, from offset 0| batch
+    batch --> bview
+    batch -->|advances| wm(("watermark"))
+    gaplog -->|events since watermark only| speed
+    speed --> sview
+    bview --> serve
+    sview --> serve
+    serve --> servedview
+```
+
+The same business rule (aggregating orders per customer) is implemented
+twice, on purpose — this duplication, and the reconciliation it requires,
+is Lambda's best-known maintenance cost and the reason Kappa was proposed
+as an alternative. The consistency property this demo is built to
+showcase: merging a stale batch view with the speed layer's increment for
+a gap must equal what a fresh batch recompute (with that gap's events
+already included) would produce — see
+`tests/test_lambda_serving_layer.py`'s
+`test_serving_result_matches_batch_layer_once_batch_absorbs_the_gap`, and
+`docs/how-to/run-lambda-demo.md` for a hands-on walkthrough (batch → seed
+gap events → speed+serve → batch again, watching the gap close).

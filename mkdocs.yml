@@ -8,6 +8,7 @@ nav:
       - Setup Guide: tutorials/setup.md
   - How-To Guides:
       - Run the Kappa Demo: how-to/run-kappa-demo.md
+      - Run the Lambda Demo: how-to/run-lambda-demo.md
   - Explanation:
       - Architecture: explanation/architecture.md
       - Concepts: explanation/concepts.md

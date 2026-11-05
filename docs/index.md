@@ -34,6 +34,17 @@ handles incremental runs and full historical **replay** identically. See
 [Architecture → Kappa architecture demo](explanation/architecture.md#kappa-architecture-demo)
 for the design rationale.
 
+### Lambda architecture demo
+
+`examples/run_lambda_architecture.py` + `src/data_proc/lambda_arch/`
+demonstrate the **Lambda architecture** pattern: a slow, always-correct
+batch layer and a fast, gap-covering speed layer, merged at query time by
+a serving layer. See
+[How to run the Lambda demo](how-to/run-lambda-demo.md) for a walkthrough
+and
+[Architecture → Lambda architecture demo](explanation/architecture.md#lambda-architecture-demo)
+for the design rationale.
+
 ## Quickstart
 
 ```bash
@@ -59,10 +70,12 @@ docker compose exec postgres psql -U postgres -d data_processing_demo \
 ├── src/data_proc/config.py       Centralized, environment-driven settings
 ├── src/data_proc/etl/            Reusable extract.py / transform.py / load.py library
 ├── src/data_proc/kappa/          Event log, checkpoint, state, fold (Kappa demo library)
+├── src/data_proc/lambda_arch/    Batch/speed/serving layers (Lambda demo library)
 ├── examples/run_pipeline.py      Demo script: wires extract -> transform -> load
 ├── examples/run_kappa_stream.py  Demo script: single stream path + replay
+├── examples/run_lambda_architecture.py  Demo script: batch + speed + serving layers
 ├── sql/schema.sql                PostgreSQL DDL, auto-applied by docker-compose
-├── tests/                        pytest unit tests for each ETL/kappa module
+├── tests/                        pytest unit tests for each ETL/kappa/lambda module
 ├── docker-compose.yml            Local PostgreSQL for the demo
 └── docs/                         This documentation site (MkDocs)
 ```

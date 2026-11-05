@@ -20,6 +20,11 @@ class Settings:
     kappa_checkpoint: Path = BASE_DIR / "data" / "processed" / "kappa_checkpoint.json"
     kappa_state_path: Path = BASE_DIR / "data" / "processed" / "kappa_order_state.json"
 
+    # Lambda demo: a separate event log (not shared with the Kappa demo's
+    # log, so the two demos don't interfere) + the batch layer's watermark.
+    lambda_event_log: Path = BASE_DIR / "data" / "processed" / "lambda_events.jsonl"
+    lambda_watermark: Path = BASE_DIR / "data" / "processed" / "lambda_watermark.json"
+
     # Public demo API used to enrich customer data (no auth required).
     enrichment_api_url: str = os.getenv(
         "ENRICHMENT_API_URL", "https://jsonplaceholder.typicode.com/users"

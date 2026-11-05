@@ -48,3 +48,12 @@ def upsert_dataframe(
         df.to_sql(table_name, conn, if_exists="append", index=False)
     logger.info("Upserted %s row(s) into table '%s'", len(df), table_name)
     return len(df)
+
+
+def read_dataframe(table_name: str, engine: Engine) -> pd.DataFrame:
+    """Read a whole table into a DataFrame, returning an empty DataFrame
+    (rather than raising) if the table exists but hasn't been populated
+    yet — e.g. a serving-layer read of a batch view before the batch
+    layer has ever run."""
+    with engine.connect() as conn:
+        return pd.read_sql_table(table_name, conn)

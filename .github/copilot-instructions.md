@@ -15,6 +15,9 @@ uv run python examples/run_pipeline.py   # run the full ETL (batch/Lambda-style)
 uv run python examples/run_kappa_stream.py --seed   # Kappa demo: seed sample events
 uv run python examples/run_kappa_stream.py          # Kappa demo: process new events
 uv run python examples/run_kappa_stream.py --replay # Kappa demo: reprocess the entire log
+uv run python examples/run_lambda_architecture.py --batch        # Lambda demo: batch layer
+uv run python examples/run_lambda_architecture.py --seed-speed 3 # Lambda demo: simulate gap events
+uv run python examples/run_lambda_architecture.py                # Lambda demo: speed + serve
 uv run pytest -v                    # run all tests
 uv run pytest tests/test_transform.py::test_clean_orders_drops_missing_customer_and_computes_line_total  # single test
 uv run --group docs mkdocs serve          # preview docs site at :8000 with live reload
@@ -22,7 +25,7 @@ uv run --group docs mkdocs build --strict # build docs, fail on warnings
 ```
 
 Equivalent `make` targets exist: `setup`, `up`, `down`, `test`, `run`,
-`run-kappa`, `docs`, `docs-serve`, `clean`.
+`run-kappa`, `run-lambda`, `docs`, `docs-serve`, `clean`.
 
 Tests do **not** require Docker/Postgres running — `tests/test_load.py` uses
 an in-memory SQLite engine, and `tests/test_extract.py` mocks the external
@@ -68,8 +71,10 @@ they can be tested/swapped independently:
   for demo purposes (not an upsert/merge — don't assume incremental-load
   semantics elsewhere). `upsert_dataframe(df, table_name, key_column,
   engine)` is the key-scoped idempotent alternative (delete-matching-keys
-  then insert), used by the Kappa demo below — dialect-agnostic, so don't
-  add Postgres-specific `ON CONFLICT`/`MERGE` syntax to it.
+  then insert), used by the Kappa and Lambda demos below —
+  dialect-agnostic, so don't add Postgres-specific `ON CONFLICT`/`MERGE`
+  syntax to it. `read_dataframe(table_name, engine)` reads a whole table
+  back (used by the Lambda demo's serving layer to read the batch view).
 
 `examples/run_pipeline.py` wires these three stages together into the
 runnable demo pipeline (`run()`); it is intentionally outside the library
@@ -109,6 +114,30 @@ confirming `tests/test_kappa_stream_transform.py`'s incremental-vs-replay
 test still passes. Writes use `etl.load.upsert_dataframe()` (key-scoped
 upsert) into `kappa_customer_order_summary`, a separate table from the
 batch pipeline's `customer_order_summary`.
+
+### Lambda demo (`src/data_proc/lambda_arch/` + `examples/run_lambda_architecture.py`)
+
+A third, independent demo: it implements the **Lambda architecture**
+pattern (separate batch + speed layers, merged by a serving layer) — see
+`.github/instructions/lambda.instructions.md` and
+`docs/explanation/architecture.md#lambda-architecture-demo`.
+`batch_layer.recompute_batch_view()` is a full, stateless recompute from
+the CSVs + the entire event log (returns the new watermark for the caller
+to persist); `speed_layer.compute_speed_increments()` only aggregates the
+already-gap-filtered events after that watermark; `serving_layer.
+merge_views()` outer-joins both at query time. These two layers'
+aggregation logic is **intentionally duplicated**, not shared — don't
+"clean up" the duplication by merging them or by reusing
+`data_proc.kappa.stream_transform`; that would defeat the point of the
+demo. Key invariant: merging a stale batch view with the speed layer's
+gap increment must equal a fresh batch recompute that already includes
+that gap — confirmed by
+`tests/test_lambda_serving_layer.py`'s
+`test_serving_result_matches_batch_layer_once_batch_absorbs_the_gap`.
+Writes to `lambda_batch_view`/`lambda_speed_view` use
+`load_dataframe(..., if_exists="replace")` (each layer fully recomputes
+its own view every run); `lambda_serving_view` uses
+`upsert_dataframe()` instead.
 
 ## Conventions
 

@@ -21,6 +21,9 @@ run:
 run-kappa:
 	uv run python examples/run_kappa_stream.py
 
+run-lambda:
+	uv run python examples/run_lambda_architecture.py
+
 docs:
 	uv run --group docs mkdocs build --strict
 
