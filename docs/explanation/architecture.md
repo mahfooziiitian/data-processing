@@ -49,6 +49,60 @@ boundaries are designed to be swapped out independently).
                     └───────────────────────┘
 ```
 
+The same flow, as an interactive [Mermaid](https://mermaid.js.org/)
+diagram (now enabled site-wide — see
+[Diagram tooling](#diagram-tooling) below):
+
+```mermaid
+flowchart TB
+    raw["data/raw/\ncustomers.csv, orders.csv"]
+    api["Public demo REST API\n(customer enrichment)"]
+    extract["EXTRACT\nsrc/etl/extract.py"]
+    transform["TRANSFORM\nsrc/etl/transform.py\nclean, validate, enrich, aggregate"]
+    load["LOAD\nsrc/etl/load.py"]
+    db[("PostgreSQL\ncustomers, orders,\ncustomer_order_summary")]
+
+    raw --> extract
+    api -.-> extract
+    extract -->|pandas DataFrames| transform
+    transform -->|pandas DataFrames| load
+    load -->|SQLAlchemy| db
+```
+
+## Diagram tooling
+
+This site supports two complementary diagram tools, both enabled in
+`mkdocs.yml`:
+
+- **[Mermaid](https://mermaid.js.org/)** — for structural/flow diagrams
+  (flowcharts, sequence/state/class diagrams). Write a fenced code block
+  with the `mermaid` language tag; Material for MkDocs renders it
+  client-side and themes it to match light/dark mode automatically. No
+  extra files needed — see the flowchart above for an example.
+- **[D3.js](https://d3js.org/)** (v7, loaded from CDN) — for custom,
+  data-driven visualizations that Mermaid can't express (e.g. charts
+  computed from this repo's sample data). Shared helper functions live in
+  `docs/javascripts/d3-diagrams.js` and are loaded on every page via
+  `extra_javascript` in `mkdocs.yml`. To add a diagram: embed a `<div>`
+  with a unique `id`, then call a helper from an inline `<script>` block
+  after it (see the example below, which renders row counts from
+  `data/raw/`).
+
+<div id="sample-data-row-counts" class="d3-diagram"></div>
+<script>
+  window.addEventListener("DOMContentLoaded", function () {
+    renderBarChart("#sample-data-row-counts", [
+      { label: "customers.csv", value: 10 },
+      { label: "orders.csv", value: 20 },
+    ]);
+  });
+</script>
+
+Both tools are additive to the hand-drawn ASCII diagrams used elsewhere in
+this repo's docs (e.g. `docs/explanation/concepts.md`) — ASCII stays fine
+for quick sketches in prose; reach for Mermaid/D3 when a diagram benefits
+from being interactive or rendered from real data.
+
 ## Component responsibilities
 
 | Component | File | Responsibility |

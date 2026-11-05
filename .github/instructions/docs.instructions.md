@@ -25,6 +25,17 @@ applyTo: "docs/**/*.md,mkdocs.yml"
   filename is required by the Copilot CLI skill spec, not a `docs/` page.
 - Adding a new page under `docs/` requires also adding it to the `nav:`
   list in `mkdocs.yml`, or it won't appear in the site navigation.
+- **Diagrams**: use fenced ` ```mermaid ` code blocks for structural/flow
+  diagrams (flowcharts, sequence/state/class) — enabled via
+  `pymdownx.superfences.custom_fences` in `mkdocs.yml`, no extra files
+  needed. For data-driven custom visualizations, use D3.js (v7, loaded
+  from CDN via `extra_javascript`): add a `<div id="...">` plus an inline
+  `<script>` calling a helper from `docs/javascripts/d3-diagrams.js` (add
+  new reusable helpers there rather than duplicating D3 boilerplate per
+  page). See `docs/explanation/architecture.md` for both patterns in use.
+  Prefer plain ASCII diagrams in prose for quick sketches; reach for
+  Mermaid/D3 when a diagram benefits from being interactive or rendered
+  from real data.
 - Validate changes with `uv run --group docs mkdocs build --strict` (fails
   the build on broken links/nav entries) before considering a docs change
   complete; preview with `uv run --group docs mkdocs serve`.
