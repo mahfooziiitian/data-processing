@@ -46,8 +46,10 @@ separates an architect-level answer from a framework-level answer:
 Each entry below is a condensed prompt with the key ideas an
 architect-level answer should cover. The [full mock interview](#part-4-full-mock-interview-walmart-global-tech-principal-data-engineer)
 later on this page works through ten Walmart-style questions at that
-level of depth; apply the same structure when practicing the other
-companies.
+level of depth, and a [second mock interview](#part-5-full-mock-interview-walmart-global-tech-principal-data-engineer-round-2)
+covers ten further questions focused on correctness under duplication,
+disorder, and historical correction; apply the same structure when
+practicing the other companies.
 
 ### 1. Walmart Global Tech — large-scale retail data processing
 
@@ -1162,3 +1164,1508 @@ normal and peak loads.
 - *How do you demonstrate that the design meets the SLA?* Use
   production-representative load tests, failure injection, end-to-end
   latency measurements, and validated output invariants.
+
+## Part 5: Full mock interview — Walmart Global Tech, Principal Data Engineer (Round 2)
+
+This is a second, independent mock interview at the same level as Part
+4, built around correctness under duplication, disorder, and
+historical correction rather than raw scale. As with Part 4, these are
+**illustrative, company-styled practice scenarios**, not verified or
+leaked questions from any company's actual interview process.
+
+The lab setup below targets PySpark with Spark 4.x-style DataFrame
+APIs and standard Spark SQL. A few exercises reference Delta Lake,
+which requires a compatible Delta-enabled Spark runtime. Streaming
+examples avoid `MemoryStream`-style test harnesses so the batch
+reference calculations can be run and checked with ordinary files and
+Spark Structured Streaming.
+
+### Lab setup
+
+```python
+from pyspark.sql import SparkSession, functions as F
+from pyspark.sql.window import Window
+from pyspark.sql.types import (
+    StructType, StructField, StringType,
+    IntegerType, LongType, DoubleType,
+    TimestampType,
+)
+
+spark = (
+    SparkSession.builder
+    .appName("Walmart-Principal-DE-Round2")
+    .master("local[4]")
+    .config("spark.sql.shuffle.partitions", "4")
+    .config("spark.sql.session.timeZone", "UTC")
+    .getOrCreate()
+)
+spark.sparkContext.setLogLevel("WARN")
+```
+
+For production, replace local execution with a properly sized
+distributed cluster and validate the execution plan against your
+runtime.
+
+### Interview overview
+
+| # | Scenario | Primary processing pattern |
+| --- | --- | --- |
+| 1 | Incremental sales with out-of-order corrections | Version-aware processing |
+| 2 | Five-minute revenue with late transactions | Event-time windows |
+| 3 | Watermark stalls during Black Friday | Watermark propagation |
+| 4 | Exactly-once sales aggregation after crashes | Checkpoints and commits |
+| 5 | Stateful customer deduplication | State retention and TTL |
+| 6 | Streaming join between purchases and refunds | Stateful joins |
+| 7 | Reprocess 30 days without double-counting | Deterministic replay |
+| 8 | Incremental aggregates with historical corrections | Retractable aggregates |
+| 9 | Recover a 500 GB stateful streaming job | State-store recovery |
+| 10 | Design an enterprise-scale correctness-first processing engine | End-to-end correctness |
+
+### Question 1 — Incremental sales with out-of-order corrections
+
+Pattern: version-aware incremental processing.
+
+**Interviewer:** A retail sales dataset contains 20 billion order
+records. Each day, 100 million change records arrive. Changes may be
+duplicated, delayed, or delivered out of order — for example, order
+`O101` receives versions 1, 3, and 2, in that arrival order. Design an
+incremental processor that maintains the latest correct state and
+never lets an older version overwrite a newer one.
+
+**Model answer**
+
+The processing system must distinguish arrival order from
+authoritative source order. The key invariant is:
+
+\[
+\text{storedVersion}(k) = \max(\text{acceptedSourceVersions}(k))
+\]
+
+assuming each version represents a complete replacement state for the
+key.
+
+*Step 1: create sample data.*
+
+```python
+changes = spark.createDataFrame(
+    [
+        ("O101", 1, 500.0, "UPSERT"),
+        ("O101", 3, 450.0, "UPSERT"),
+        ("O101", 2, 475.0, "UPSERT"),
+        ("O102", 1, 700.0, "UPSERT"),
+        ("O102", 2, 0.0, "DELETE"),
+        ("O103", 1, 200.0, "UPSERT"),
+        ("O103", 1, 200.0, "UPSERT"),
+    ],
+    ["order_id", "version", "amount", "operation"],
+)
+changes.createOrReplaceTempView("order_changes")
+```
+
+*Step 2: deterministically select the latest version.*
+
+```sql
+WITH ranked AS (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (
+            PARTITION BY order_id
+            ORDER BY version DESC
+        ) AS rn
+    FROM order_changes
+)
+SELECT order_id, version, amount, operation
+FROM ranked
+WHERE rn = 1;
+```
+
+Expected result:
+
+| order_id | version | amount | operation |
+| --- | --- | --- | --- |
+| O101 | 3 | 450 | UPSERT |
+| O102 | 2 | 0 | DELETE |
+| O103 | 1 | 200 | UPSERT |
+
+This assumes identical duplicate versions carry identical content.
+Conflicting records with the same version must be rejected or resolved
+using an additional authoritative ordering field.
+
+*Step 3: apply the latest state.*
+
+```python
+latest = spark.sql("""
+    WITH ranked AS (
+        SELECT *,
+               ROW_NUMBER() OVER (
+                   PARTITION BY order_id
+                   ORDER BY version DESC
+               ) rn
+        FROM order_changes
+    )
+    SELECT order_id, version, amount, operation
+    FROM ranked
+    WHERE rn = 1
+""")
+
+active_orders = latest.filter(F.col("operation") != "DELETE")
+active_orders.show()
+```
+
+Expected active orders:
+
+| order_id | version | amount |
+| --- | --- | --- |
+| O101 | 3 | 450 |
+| O103 | 1 | 200 |
+
+**Production-grade state update.** A real incremental processor must
+compare incoming versions against persisted versions from previous
+runs, not only deduplicate the current batch. A robust target keeps
+tombstones:
+
+```sql
+MERGE INTO order_state AS t
+USING latest_changes AS s
+ON t.order_id = s.order_id
+
+WHEN MATCHED AND s.version > t.version
+THEN UPDATE SET
+    t.version = s.version,
+    t.amount = s.amount,
+    t.is_deleted = (s.operation = 'DELETE')
+
+WHEN NOT MATCHED
+THEN INSERT (
+    order_id, version, amount, is_deleted
+)
+VALUES (
+    s.order_id,
+    s.version,
+    s.amount,
+    s.operation = 'DELETE'
+);
+```
+
+This assumes a compatible table implementation supporting `MERGE`,
+such as Delta Lake, and that `latest_changes` contains at most one
+record per key. Keeping deletion markers prevents stale versions from
+resurrecting deleted orders.
+
+*Physical execution plan (current-batch dedup):*
+
+```text
+Window(row_number)
+  Sort(order_id, version DESC)
+    Exchange hashpartitioning(order_id)
+      Scan changes
+```
+
+A target-state merge additionally requires matching source keys
+against persisted target state and applying transactional updates.
+
+**Failure matrix**
+
+| Failure | Correct behavior |
+| --- | --- |
+| Version 3 arrives before version 2 | Version 2 rejected as stale |
+| Same version arrives twice | No state change on replay |
+| Delete version 5 followed by update version 4 | Order remains deleted |
+| Crash before transaction commit | Retry safely |
+| Crash after commit, before acknowledgment | Replay produces no additional change |
+
+**Interviewer follow-ups**
+
+- *Why is deduplicating only the current micro-batch insufficient?*
+  An older version may arrive in a later batch. Correctness requires
+  comparing against durable target state.
+- *What happens if two events share the same version but different
+  amounts?* The source ordering contract is ambiguous. Quarantine the
+  conflict or use an authoritative tie-breaker; do not silently choose
+  an arbitrary row.
+- *When is version-based latest-state processing insufficient?* When
+  changes are partial deltas rather than complete replacements, or
+  when business logic requires preserving every intermediate
+  transition.
+
+### Question 2 — Five-minute revenue with late transactions
+
+Pattern: event-time window aggregation.
+
+**Interviewer:** Walmart needs revenue by store every five minutes.
+Most transactions arrive within seconds, but some arrive 45 minutes
+late and rare transactions arrive several hours late. The dashboard
+must update quickly, while financial totals must eventually be
+correct. How would you design the processing logic?
+
+**Model answer**
+
+I would separate two requirements: **freshness** — publish
+provisional revenue promptly — and **correctness** — reconcile late
+events and historical corrections against authoritative transaction
+data. A watermark bounds state and governs event-time finalization,
+but it cannot guarantee that no older events will arrive.
+
+*Step 1: create sample events.*
+
+```python
+from datetime import datetime
+
+events = spark.createDataFrame(
+    [
+        ("S01", "T1", datetime(2026, 11, 5, 10, 1), 100.0),
+        ("S01", "T2", datetime(2026, 11, 5, 10, 3), 200.0),
+        ("S01", "T3", datetime(2026, 11, 5, 10, 7), 300.0),
+        ("S02", "T4", datetime(2026, 11, 5, 10, 4), 150.0),
+    ],
+    ["store_id", "transaction_id", "event_time", "amount"],
+)
+events.createOrReplaceTempView("sales_events")
+```
+
+*Step 2: batch reference calculation.*
+
+```sql
+SELECT
+    store_id,
+    window(event_time, '5 minutes') AS sales_window,
+    SUM(amount) AS revenue,
+    COUNT(*) AS transaction_count
+FROM sales_events
+GROUP BY
+    store_id,
+    window(event_time, '5 minutes');
+```
+
+Expected results:
+
+| Store | Window (UTC) | Revenue | Count |
+| --- | --- | --- | --- |
+| S01 | 10:00–10:05 | 300 | 2 |
+| S01 | 10:05–10:10 | 300 | 1 |
+| S02 | 10:00–10:05 | 150 | 1 |
+
+*Step 3: streaming implementation.* Assuming `streaming_events` is a
+streaming DataFrame with the same schema:
+
+```python
+windowed = (
+    streaming_events
+    .withWatermark("event_time", "60 minutes")
+    .groupBy(
+        F.window("event_time", "5 minutes"),
+        F.col("store_id"),
+    )
+    .agg(
+        F.sum("amount").alias("revenue"),
+        F.count("*").alias("transaction_count"),
+    )
+)
+```
+
+For provisional updates, use an output mode compatible with updating
+aggregates and a sink that supports updates. For finalized append-only
+output, the engine must wait until the watermark allows a window to
+close.
+
+*Physical execution plan:*
+
+```text
+StateStoreSave
+  HashAggregate(final)
+    Exchange hashpartitioning(store_id, window)
+      HashAggregate(partial)
+        EventTimeWatermark
+          Streaming Source
+```
+
+Actual plans may also contain `StateStoreRestore`, projections, and
+additional aggregation operators.
+
+**Failure matrix**
+
+| Scenario | Expected handling |
+| --- | --- |
+| Event arrives before watermark cutoff | Included under supported operator semantics |
+| Event arrives after relevant state is finalized | Correct through separate reconciliation |
+| Job crashes before checkpoint completion | Restore and replay as needed |
+| Duplicate transaction arrives | Requires explicit deduplication |
+| Dashboard displays provisional aggregate | Must allow later correction |
+
+**Interviewer follow-ups**
+
+- *Does `withWatermark("event_time", "60 minutes")` mean every event
+  delayed less than 60 minutes is accepted?* No. The watermark depends
+  on observed event-time progress; it is not a per-event arrival-time
+  guarantee.
+- *Why not use a 24-hour watermark?* It may increase state retention
+  and delay finalization. Compare the late-arrival distribution with
+  state cost and reconciliation requirements.
+- *How do you handle a correction arriving three days later?*
+  Recompute or adjust the affected historical window from authoritative
+  data using a replay-safe correction process.
+
+### Question 3 — Watermark stalls during Black Friday
+
+Pattern: watermark progression, idle inputs, and state retention.
+
+**Interviewer:** During Black Friday, Walmart processes transactions
+from 10,000 stores. Some stores generate thousands of transactions per
+second, while others remain inactive for several hours. A Spark
+Structured Streaming aggregation uses a 30-minute watermark. After six
+hours, state-store size increases dramatically, even though
+transaction throughput remains stable. Explain the possible causes and
+how you would troubleshoot them.
+
+**Model answer**
+
+The first hypothesis is that event-time progress is not advancing as
+expected. However, inactive stores do not automatically stall Spark's
+watermark: watermark progression is based on event-time observations
+across the relevant streaming inputs, not on the minimum timestamp of
+every individual store. I would distinguish three potential problems:
+
+1. Watermark progression is stalled.
+2. Watermark progression is healthy, but state cardinality is
+   increasing.
+3. The aggregation has no effective state-expiration condition.
+
+*Step 1: inspect streaming progress.*
+
+```python
+progress = query.lastProgress
+if progress:
+    print("Watermark:", progress.get("eventTime"))
+    print("State operators:", progress.get("stateOperators"))
+    print("Input rows:", progress.get("numInputRows"))
+```
+
+Key metrics include `eventTime.watermark`, `eventTime.max`,
+`numRowsTotal`, `numRowsUpdated`, `numRowsRemoved`, `memoryUsedBytes`,
+and state-store commit/update timings, where exposed.
+
+*Step 2: investigate multiple streaming inputs.* Spark uses a global
+watermark for supported multi-input stateful queries. The default
+multiple-watermark policy is generally `min`, which can hold back
+progress when one input stream advances much more slowly.
+
+```python
+spark.conf.set(
+    "spark.sql.streaming.multipleWatermarkPolicy",
+    "min",
+)
+```
+
+Changing this to `max` can improve progress but increases the risk of
+dropping events from slower streams. I would not change the policy
+without evaluating correctness.
+
+*Step 3: check whether the state is bounded.*
+
+```python
+agg = (
+    streaming_events
+    .withWatermark("event_time", "30 minutes")
+    .groupBy(
+        F.window("event_time", "5 minutes"),
+        "store_id",
+    )
+    .count()
+)
+```
+
+A time-bounded window aggregation can remove finalized state when the
+watermark advances sufficiently. By contrast, a running aggregation by
+store without a time bound may retain state indefinitely.
+
+*Physical execution plan:*
+
+```text
+StateStoreSave
+  HashAggregate(window, store_id)
+    Exchange hashpartitioning(window, store_id)
+      HashAggregate
+        EventTimeWatermark
+          Streaming Source
+```
+
+The state-store operator's metrics are essential for determining
+whether records are being removed.
+
+**Failure and correctness matrix**
+
+| Condition | Risk | Response |
+| --- | --- | --- |
+| No new events advance event time | Watermark stalls | Inspect source activity and progress |
+| Slow input in a multi-input query | Global watermark delayed | Review input-specific progress |
+| Unbounded keyed aggregation | Persistent state growth | Redesign state lifecycle |
+| Watermark changed from `min` to `max` | Slow-stream data may be dropped | Validate late-data correctness |
+| Job restarted with incompatible state configuration | Recovery failure or changed semantics | Use a controlled migration |
+
+**Interviewer follow-ups**
+
+- *Does a watermark advance based on wall-clock time?* No. Progress is
+  driven by observed event timestamps and engine execution.
+- *Can adding more executors fix watermark stalls?* Not necessarily.
+  More compute cannot resolve a semantic lack of event-time progress.
+- *Would you change the watermark delay from 30 minutes to five
+  minutes?* Only if the business can tolerate the resulting late-data
+  behavior or has a reliable correction process.
+
+### Question 4 — Exactly-once sales aggregation after crashes
+
+Pattern: checkpointing, transactional commits, and replay-safe output.
+
+**Interviewer:** A Spark Structured Streaming job calculates revenue
+every five minutes. During micro-batch 105, Spark reads 2 million
+transactions, aggregation completes, and the output is written
+successfully — but the driver crashes before Spark records successful
+batch completion. After restart, Spark processes batch 105 again. How
+do you guarantee that revenue is not counted twice?
+
+**Model answer**
+
+The critical distinction is between exactly-once internal processing
+and exactly-once effects at the output. Spark may replay an
+uncommitted micro-batch, so an output operation must tolerate repeated
+execution. I would use a durable batch-commit ledger and transactional
+aggregate updates.
+
+*Step 1: understand the failure boundary.*
+
+```text
+Read batch 105 → calculate revenue → commit output
+  → driver crashes before batch acknowledgment
+  → batch 105 is replayed
+```
+
+*Step 2: define the correct commit protocol.* A transactional
+relational sink could atomically execute the following logic:
+
+```sql
+BEGIN;
+
+INSERT INTO processed_batches (
+    application_id,
+    batch_id
+)
+VALUES ('store-revenue-v1', 105)
+ON CONFLICT DO NOTHING;
+
+-- Apply aggregate deltas only if the batch ID
+-- was newly inserted in this transaction.
+
+COMMIT;
+```
+
+The ledger insert and aggregate update must occur in the same
+database transaction — checking the ledger in one transaction and
+updating revenue in another is not sufficient. For Delta Lake, a
+suitable alternative is to write deterministic, versioned aggregate
+snapshots or use supported transaction identifiers and carefully
+designed idempotent writes.
+
+*Step 3: PySpark `foreachBatch` structure.*
+
+```python
+def process_batch(batch_df, batch_id):
+    partial = (
+        batch_df
+        .groupBy("store_id")
+        .agg(F.sum("amount").alias("batch_revenue"))
+    )
+    # The implementation of this function must:
+    # 1. Atomically claim (application_id, batch_id)
+    # 2. Apply aggregate changes in the same transaction
+    # 3. Treat a previously committed batch as a no-op
+    transactional_commit(
+        application_id="store-revenue-v1",
+        batch_id=batch_id,
+        data=partial,
+    )
+```
+
+`transactional_commit` represents the required sink-specific
+transaction implementation; it is not a built-in PySpark function. For
+a runnable local demonstration of the replay decision:
+
+```python
+committed = set()
+revenue = {}
+
+def apply_batch(batch_id, updates):
+    if batch_id in committed:
+        return "ALREADY_COMMITTED"
+    for store_id, amount in updates.items():
+        revenue[store_id] = revenue.get(store_id, 0) + amount
+    committed.add(batch_id)
+    return "COMMITTED"
+
+assert apply_batch(105, {"S01": 500}) == "COMMITTED"
+assert apply_batch(105, {"S01": 500}) == "ALREADY_COMMITTED"
+assert revenue["S01"] == 500
+```
+
+This is a single-process illustration only — the in-memory `set` is
+not crash-safe; production needs durable atomic commits.
+
+*Physical execution plan:*
+
+```text
+MicroBatchExecution
+  HashAggregate(final)
+    Exchange hashpartitioning(store_id)
+      HashAggregate(partial)
+        Streaming Source
+```
+
+`foreachBatch` invokes the user-defined sink processing for each
+micro-batch; the sink transaction is outside Spark's physical query
+plan.
+
+**Failure matrix**
+
+| Crash point | Correct recovery |
+| --- | --- |
+| Before input processing | Replay batch |
+| During aggregation | Recompute batch |
+| Before output commit | Retry transaction |
+| After output commit, before Spark acknowledgment | Detect already-committed batch |
+| During output transaction | Roll back or recover atomically |
+| After checkpoint completion | Resume at subsequent batch |
+
+**Interviewer follow-ups**
+
+- *Is `foreachBatch` exactly-once by default?* No. It provides
+  at-least-once batch execution behavior; exactly-once effects require
+  additional sink guarantees.
+- *Is a batch ID globally unique?* No. It must be scoped to a stable
+  application/checkpoint identity — resetting a checkpoint can cause
+  batch IDs to be reused.
+- *Why is a separate commit ledger dangerous?* A crash between the
+  ledger update and the business update can create either missing
+  results or duplicate results.
+
+### Question 5 — Stateful customer deduplication
+
+Pattern: keyed state, deduplication, and bounded retention.
+
+**Interviewer:** Walmart processes 800 million customer activity
+events per day. Some events are duplicated because of upstream
+retries. Each event has a unique `event_id`, and duplicates can arrive
+up to 24 hours apart. Design an efficient deduplication processor.
+Explain memory consumption, watermark behavior, and how you would test
+correctness.
+
+**Model answer**
+
+I would first define whether the requirement is to deduplicate events
+within a known time horizon, or to deduplicate every event ever
+processed — these are fundamentally different state requirements. For
+bounded deduplication, use event-time state and an expiration policy.
+
+*Sample data.*
+
+```python
+from datetime import datetime
+
+activity = spark.createDataFrame(
+    [
+        ("E101", "C1", datetime(2026, 11, 5, 10, 0)),
+        ("E102", "C2", datetime(2026, 11, 5, 10, 1)),
+        ("E101", "C1", datetime(2026, 11, 5, 10, 0)),
+        ("E103", "C3", datetime(2026, 11, 5, 10, 2)),
+    ],
+    ["event_id", "customer_id", "event_time"],
+)
+activity.createOrReplaceTempView("activity")
+```
+
+*Batch reference.*
+
+```sql
+SELECT event_id, customer_id, event_time
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY event_id
+               ORDER BY event_time
+           ) AS rn
+    FROM activity
+)
+WHERE rn = 1;
+```
+
+*Streaming implementation.* For Spark versions supporting
+watermark-aware within-watermark deduplication:
+
+```python
+deduplicated = (
+    streaming_activity
+    .withWatermark("event_time", "24 hours")
+    .dropDuplicatesWithinWatermark(["event_id"])
+)
+```
+
+This assumes duplicate records for an ID have event-time differences
+within the configured bound — a 24-hour delay in arrival time is not
+the same thing as a 24-hour difference in event timestamps.
+`dropDuplicatesWithinWatermark` requires a supported Spark version,
+and events outside its watermark semantics may be dropped or no longer
+deduplicated as intended.
+
+*State sizing.* Suppose 800 million unique event IDs must be retained
+and each stored state entry costs an illustrative 100 bytes:
+
+\[
+800{,}000{,}000 \times 100 = 80\text{ GB}
+\]
+
+Actual state usage can be considerably different because of key
+encoding, indexes, metadata, storage-engine overhead, and
+checkpointing.
+
+*Physical execution plan:*
+
+```text
+StreamingDeduplicateWithinWatermark
+  EventTimeWatermark
+    Streaming Source
+```
+
+State-store reads, writes, and recovery are handled by the streaming
+execution engine.
+
+**Failure matrix**
+
+| Scenario | Expected behavior |
+| --- | --- |
+| Duplicate within supported retention horizon | Suppressed |
+| Same event ID with conflicting payload | Requires explicit conflict policy |
+| Duplicate after state expiration | May be treated as new |
+| Restart with valid checkpoint | Restore deduplication state |
+| Restart with new checkpoint | Previous deduplication state unavailable |
+| Event timestamp is null or invalid | Validate or quarantine |
+
+**Interviewer follow-ups**
+
+- *Why not use `dropDuplicates(["event_id"])` without a watermark?*
+  For an unbounded stream, it can require indefinitely growing
+  deduplication state.
+- *Can a Bloom filter guarantee exact deduplication?* No. Bloom
+  filters can have false positives, which can incorrectly suppress
+  valid events.
+- *How would you guarantee permanent deduplication?* Use durable
+  identity tracking with an explicitly defined retention and storage
+  strategy — permanent exact deduplication generally requires
+  persistent historical identity information.
+
+### Question 6 — Streaming join between purchases and refunds
+
+Pattern: stream-stream joins, event-time bounds, and state cleanup.
+
+**Interviewer:** A customer purchases a product, then may request a
+refund within seven days. Purchase and refund events arrive on
+separate streams, and refund events may arrive before the
+corresponding purchase event because of processing delays. Design a
+streaming processor that matches purchases to refunds without losing
+valid matches or allowing unlimited state growth.
+
+**Model answer**
+
+I would use a time-bounded stream-stream join where the business
+contract defines the maximum refund interval. The main correctness
+questions are: is the refund window based on purchase event time or
+processing time? Can a purchase have multiple partial refunds? How
+late can each stream arrive? What happens when a refund is unmatched
+after the retention horizon?
+
+*Step 1: create sample datasets.*
+
+```python
+from datetime import datetime
+
+purchases = spark.createDataFrame(
+    [
+        ("O101", datetime(2026, 11, 1, 10, 0), 500.0),
+        ("O102", datetime(2026, 11, 2, 12, 0), 700.0),
+    ],
+    ["order_id", "purchase_time", "purchase_amount"],
+)
+refunds = spark.createDataFrame(
+    [
+        ("R1", "O101", datetime(2026, 11, 3, 9, 0), 100.0),
+        ("R2", "O102", datetime(2026, 11, 4, 8, 0), 700.0),
+    ],
+    ["refund_id", "order_id", "refund_time", "refund_amount"],
+)
+purchases.createOrReplaceTempView("purchases")
+refunds.createOrReplaceTempView("refunds")
+```
+
+*Step 2: batch reference join.*
+
+```sql
+SELECT
+    p.order_id,
+    p.purchase_amount,
+    r.refund_id,
+    r.refund_amount
+FROM purchases p
+INNER JOIN refunds r
+    ON p.order_id = r.order_id
+   AND r.refund_time >= p.purchase_time
+   AND r.refund_time <= p.purchase_time + INTERVAL 7 DAYS;
+```
+
+Expected output:
+
+| order_id | purchase_amount | refund_id | refund_amount |
+| --- | --- | --- | --- |
+| O101 | 500 | R1 | 100 |
+| O102 | 700 | R2 | 700 |
+
+*Step 3: streaming implementation.*
+
+```python
+p = (
+    purchase_stream
+    .withWatermark("purchase_time", "2 hours")
+    .alias("p")
+)
+r = (
+    refund_stream
+    .withWatermark("refund_time", "2 hours")
+    .alias("r")
+)
+matched = p.join(
+    r,
+    F.expr("""
+        p.order_id = r.order_id
+        AND r.refund_time >= p.purchase_time
+        AND r.refund_time <= p.purchase_time + INTERVAL 7 DAYS
+    """),
+    "inner",
+)
+```
+
+This is a supported style of time-bounded stream-stream join. It
+requires appropriately typed timestamp columns and compatible Spark
+streaming configuration. The two-hour watermark delay is an assumption
+about input disorder, not a replacement for the seven-day business
+matching interval.
+
+*Physical execution plan.* A representative plan is:
+
+```text
+StreamingSymmetricHashJoin
+  Left:
+    EventTimeWatermark
+      Purchase Stream
+  Right:
+    EventTimeWatermark
+      Refund Stream
+  Join:
+    order_id equality
+    refund_time within purchase_time + 7 days
+```
+
+Spark maintains state for both sides until its event-time cleanup
+conditions permit removal.
+
+**Important production consideration.** A seven-day business interval
+can result in substantial retained state — for example, at 100 million
+purchases per day, the processor might need to retain hundreds of
+millions of purchase-side records. I would compare a direct streaming
+join against a design using durable keyed purchase state and
+incremental refund matching. The alternative can be more economical,
+but introduces different lookup, expiry, and recovery behavior.
+
+**Failure matrix**
+
+| Failure | Correct handling |
+| --- | --- |
+| Refund arrives before purchase | Retain refund until match or expiration |
+| Duplicate refund ID | Deduplicate before applying financial effects |
+| Partial refund | Preserve distinct refund events |
+| Refund after seven-day business window | Apply defined exception policy |
+| Watermark advances beyond matching horizon | State may expire |
+| Worker crashes during join | Restore state and replay |
+
+**Interviewer follow-ups**
+
+- *Why do you need watermarks on both streams?* They provide
+  event-time progress information used to bound state and determine
+  when matching records are no longer expected.
+- *Is a seven-day stateful join always a good design?* No. State size,
+  checkpoint duration, latency, and source volume may make durable
+  keyed lookup more appropriate.
+- *How do you prevent duplicate refunds from double-counting revenue?*
+  Deduplicate by a stable refund identifier and make downstream
+  aggregate updates replay-safe.
+
+### Question 7 — Reprocess 30 days without double-counting
+
+Pattern: deterministic replay, historical backfill, and atomic
+publication.
+
+**Interviewer:** A bug in a revenue transformation caused incorrect
+results for the last 30 days. The source contains 15 billion
+transactions. You must recompute the affected aggregates while the
+live processing system continues operating. How would you perform the
+replay without duplicate results, missing corrections, or overwriting
+newer data?
+
+**Model answer**
+
+I would treat historical replay as a versioned deterministic
+computation. The fundamental invariant is:
+
+\[
+\text{Result} = f(\text{Input Snapshot}, \text{Logic Version})
+\]
+
+The same input snapshot and deterministic logic version should produce
+the same logical output.
+
+*Step 1: freeze the replay input.* Choose an authoritative input
+snapshot or source version. Do not read a moving target while
+attempting to compare historical results.
+
+*Step 2: recompute affected aggregates.*
+
+```python
+from pyspark.sql import functions as F
+
+replay_input = (
+    spark.read.table("retail.transactions")
+    .where(
+        (F.col("sales_date") >= "2026-10-01")
+        & (F.col("sales_date") <= "2026-10-30")
+    )
+)
+
+recomputed = (
+    replay_input
+    .groupBy("sales_date", "store_id")
+    .agg(
+        F.sum("net_amount").alias("revenue"),
+        F.count("*").alias("transaction_count"),
+    )
+)
+```
+
+This is runnable against an existing table with the stated schema. For
+a versioned table, pin the read to the selected historical snapshot
+rather than relying on the current table state.
+
+*Step 3: write to isolated staging.*
+
+```python
+(
+    recomputed.write
+    .format("delta")
+    .mode("overwrite")
+    .saveAsTable("retail.revenue_replay_staging")
+)
+```
+
+*Step 4: validate before publishing.*
+
+```sql
+SELECT
+    sales_date,
+    COUNT(*) AS store_count,
+    SUM(revenue) AS total_revenue
+FROM retail.revenue_replay_staging
+GROUP BY sales_date
+ORDER BY sales_date;
+```
+
+Compare against independent expected totals and business invariants.
+
+*Step 5: publish safely.* For a Delta target, a controlled
+partition-scoped replacement can be used if the replay covers complete
+target partitions.
+
+```python
+(
+    recomputed.write
+    .format("delta")
+    .mode("overwrite")
+    .option(
+        "replaceWhere",
+        "sales_date >= '2026-10-01' AND sales_date <= '2026-10-30'",
+    )
+    .saveAsTable("retail.daily_revenue")
+)
+```
+
+This must be coordinated with live writers — atomic replacement of a
+date range does not, by itself, prevent a stale replay from
+overwriting newer corrections. A stronger publication design uses a
+defined cutoff, compatible transaction isolation, and a catch-up or
+reconciliation step for changes committed after the replay snapshot.
+
+*Physical execution plan:*
+
+```text
+HashAggregate(final)
+  Exchange hashpartitioning(sales_date, store_id)
+    HashAggregate(partial)
+      Filter(replay date range)
+        FileScan
+```
+
+**Failure matrix**
+
+| Failure | Correct behavior |
+| --- | --- |
+| Replay crashes before staging completes | Retry staging |
+| Staging contains incomplete dates | Validation rejects publication |
+| Live correction arrives during replay | Capture and reconcile after cutoff |
+| Publication fails before commit | Original result remains |
+| Replay publication succeeds, acknowledgment fails | Detect published version before retry |
+| Same replay executed twice | Final result remains logically unchanged |
+
+**Interviewer follow-ups**
+
+- *Why not delete 30 days of data and reinsert everything?* That can
+  expose incomplete results and complicate concurrent processing.
+  Prefer transactional replacement or controlled version switching.
+- *How do you handle a live correction arriving after the replay
+  snapshot?* Use a change boundary and apply all subsequent changes
+  after publishing the historical recomputation.
+- *How do you verify that replay is correct?* Compare deterministic
+  aggregates, uniqueness constraints, counts, and business invariants
+  against an independent reference calculation.
+
+### Question 8 — Incremental aggregates with historical corrections
+
+Pattern: retractable aggregation and change-delta processing.
+
+**Interviewer:** A customer buys a product for ₹1,000 on Monday. On
+Tuesday, the amount is corrected to ₹900. On Wednesday, the
+transaction is canceled. A daily revenue aggregation must remain
+correct without recomputing all historical transactions. How would you
+implement incremental aggregate maintenance?
+
+**Model answer**
+
+A simple append-only sum is incorrect when previously accepted values
+can change — the processing system must calculate the difference
+between old and new contributions:
+
+\[
+\Delta = \text{New Contribution} - \text{Old Contribution}
+\]
+
+For the example:
+
+| Event | Previous | New | Revenue delta |
+| --- | --- | --- | --- |
+| Purchase | 0 | 1,000 | +1,000 |
+| Correction | 1,000 | 900 | −100 |
+| Cancellation | 900 | 0 | −900 |
+
+Final contribution: ₹0.
+
+*Step 1: implement a retractable aggregate.*
+
+```python
+from pyspark.sql import functions as F
+
+changes = spark.createDataFrame(
+    [
+        ("O101", 1, 0.0, 1000.0),
+        ("O101", 2, 1000.0, 900.0),
+        ("O101", 3, 900.0, 0.0),
+        ("O102", 1, 0.0, 500.0),
+    ],
+    ["order_id", "version", "old_amount", "new_amount"],
+)
+deltas = changes.withColumn(
+    "revenue_delta",
+    F.col("new_amount") - F.col("old_amount"),
+)
+deltas.show()
+```
+
+*Step 2: aggregate the deltas.*
+
+```python
+result = (
+    deltas
+    .groupBy("order_id")
+    .agg(F.sum("revenue_delta").alias("net_contribution"))
+)
+result.show()
+```
+
+Expected:
+
+| order_id | net_contribution |
+| --- | --- |
+| O101 | 0 |
+| O102 | 500 |
+
+*Spark SQL solution.* Register the DataFrame as `changes` before
+running:
+
+```python
+changes.createOrReplaceTempView("changes")
+```
+
+```sql
+WITH deltas AS (
+    SELECT
+        order_id,
+        new_amount - old_amount AS revenue_delta
+    FROM changes
+)
+SELECT
+    order_id,
+    SUM(revenue_delta) AS net_contribution
+FROM deltas
+GROUP BY order_id;
+```
+
+**Production correctness issue.** The example assumes `old_amount` is
+accurate and each transition is applied exactly once. In real systems,
+duplicate or out-of-order deltas can corrupt aggregates. A more robust
+design stores the latest accepted version and contribution for each
+order. For an incoming complete replacement event:
+
+1. Compare its version with the persisted version.
+2. Reject stale or duplicate versions.
+3. Compute the difference between new and stored contributions.
+4. Atomically update both the order state and aggregate contribution.
+
+If an order changes its grouping dimensions, such as store or business
+date, the old group must receive a negative adjustment and the new
+group a positive adjustment.
+
+*Physical execution plan:*
+
+```text
+HashAggregate(final)
+  Exchange hashpartitioning(order_id)
+    HashAggregate(partial)
+      Project(new_amount - old_amount)
+        Scan changes
+```
+
+**Failure matrix**
+
+| Failure | Risk | Correct handling |
+| --- | --- | --- |
+| Correction replayed twice | Double subtraction | Version-aware idempotency |
+| Cancellation before purchase | Incorrect intermediate total | Authoritative version ordering |
+| Correction changes sales date | Wrong daily bucket | Retract old and add new contribution |
+| Crash after state update but before aggregate update | Inconsistency | Atomic transaction or recoverable reconciliation |
+| Missing old contribution | Incorrect delta | Read persisted prior state |
+
+**Interviewer follow-ups**
+
+- *Can you incrementally maintain `AVG`?* Yes. Maintain sum and count,
+  then calculate sum/count, retracting both appropriately.
+- *Can you incrementally maintain `MIN` or `MAX` using only the
+  current minimum or maximum?* Not generally when deletions are
+  allowed — removing the current minimum may require additional
+  candidate state or recomputation.
+- *Why are retractions important in streaming analytics?* Because
+  updates, cancellations, and late corrections change previously
+  published aggregate contributions.
+
+### Question 9 — Recover a 500 GB stateful streaming job
+
+Pattern: distributed state management, checkpoint recovery, and
+rescaling.
+
+**Interviewer:** A Walmart streaming application maintains
+approximately 500 GB of state across 200 Spark tasks. During Black
+Friday, several executors fail. The query restarts, but recovery takes
+40 minutes, while the freshness SLA is 30 seconds. How would you
+diagnose and redesign the stateful processing system?
+
+**Model answer**
+
+I would separate state correctness, recovery time, and steady-state
+latency. A large state store does not automatically imply poor
+performance, but its storage layout, checkpointing strategy, and
+restoration behavior can become major bottlenecks.
+
+*Step 1: inspect state metrics.*
+
+```python
+progress = query.lastProgress
+if progress:
+    for operator in progress.get("stateOperators", []):
+        print("Operator:", operator.get("operatorName"))
+        print("Rows:", operator.get("numRowsTotal"))
+        print("Memory:", operator.get("memoryUsedBytes"))
+        print("Custom metrics:", operator.get("customMetrics"))
+```
+
+Also inspect checkpoint duration and storage latency, the state-store
+provider and configuration, state rows per partition, state size
+distribution, RocksDB compaction and cache behavior (if applicable),
+executor memory/local disk/network I/O, and time spent restoring state
+versus replaying source data.
+
+*Step 2: analyze state distribution.* Illustrative, hypothetical
+per-partition state sizes for diagnostic purposes:
+
+| Partition | State size |
+| --- | --- |
+| P1 | 4 GB |
+| P2 | 5 GB |
+| P3 | 18 GB |
+| P4 | 6 GB |
+| P5 | 5 GB |
+| P6 | 4 GB |
+
+A disproportionately large state partition (P3 above) can dominate
+recovery time even when total state size is distributed across many
+tasks. If one partition is substantially larger than others,
+investigate key skew before changing infrastructure.
+
+*Step 3: evaluate the state-store backend.* For compatible Spark
+versions, a RocksDB-backed state store can be useful when state is too
+large for efficient JVM heap management:
+
+```python
+spark.conf.set(
+    "spark.sql.streaming.stateStore.providerClass",
+    "org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider",
+)
+```
+
+Set this before creating a new compatible stateful query. Changing a
+state-store provider for an existing checkpoint is not a routine
+in-place tuning operation — validate compatibility and use a supported
+migration strategy, often involving a new checkpoint and controlled
+state reconstruction.
+
+*Step 4: reduce unnecessary state.* Review whether state expiration is
+semantically valid, whether keyed state contains unnecessary columns,
+whether state can be compacted or represented more efficiently,
+whether hot keys create disproportionate state, whether the
+aggregation can use bounded windows, and whether approximate
+computation is acceptable for selected metrics.
+
+*Step 5: evaluate recovery architecture.* For RocksDB-backed state,
+incremental checkpointing may reduce checkpoint data movement under
+supported configurations, although it does not eliminate all
+restoration costs. Test recovery with production-sized state rather
+than extrapolating from small development workloads.
+
+*Physical execution plan:*
+
+```text
+StateStoreSave
+  HashAggregate
+    Exchange hashpartitioning(customer_id, N)
+      HashAggregate
+        Streaming Source
+```
+
+A representative stateful aggregation may also contain
+`StateStoreRestore`. Changing state partition counts across checkpoint
+recovery can have restrictions — rescaling must follow the framework's
+supported state migration and recovery procedures.
+
+**Failure matrix**
+
+| Failure | Expected recovery |
+| --- | --- |
+| Executor process crashes | Restart affected tasks and restore state |
+| Local RocksDB files lost | Restore from durable checkpoint state |
+| Checkpoint files corrupted | Recovery may fail; use validated recovery procedures |
+| Hot-key partition becomes oversized | Investigate key distribution and state design |
+| State schema changes incompatibly | Controlled state migration |
+| Source data no longer retained | Full recovery may be impossible |
+
+**Interviewer follow-ups**
+
+- *Does increasing executors automatically reduce the 500 GB state
+  size?* No. It may improve resource availability, but existing state
+  partitioning and recovery constraints remain.
+- *Why might RocksDB outperform an in-memory state store?* It can
+  manage large state outside the JVM heap and reduce heap pressure,
+  although it introduces storage and compaction costs.
+- *What is your recovery SLO?* I would define it explicitly, for
+  example a recovery-time objective under five minutes, then validate
+  it using failure injection and realistic state sizes.
+
+### Question 10 — Design a Walmart-scale correctness-first processing engine
+
+Final principal architecture round.
+
+**Interviewer:** Design a data processing platform for a large retail
+organization with the following requirements: five billion
+transactions per day; 30-second freshness for operational revenue
+dashboards; daily financial totals must be accurate after
+reconciliation; transactions may be duplicated or arrive out of order;
+historical corrections can arrive 30 days late; processing must
+survive worker and driver failures; historical replay must not corrupt
+live results; stateful computation must remain cost-efficient. Explain
+the processing patterns, algorithms, Spark execution behavior, failure
+recovery, and correctness guarantees.
+
+**Model answer**
+
+*Step 1: establish correctness invariants.* Before selecting the
+execution strategy, define:
+
+| Invariant | Requirement |
+| --- | --- |
+| Unique transaction identity | One accepted current state per transaction ID |
+| Source ordering | Older versions cannot overwrite newer versions |
+| Revenue correctness | Aggregates equal accepted transaction contributions |
+| Replay safety | Reprocessing the same logical input does not change the final result |
+| State recovery | Restart preserves the last committed logical state |
+| Late correction | Historical results can be revised |
+| Publication | Readers never observe partially committed aggregate results |
+
+The most important invariant is:
+
+\[
+\text{Revenue}(d,s) = \sum_{\substack{t:\,\text{date}(t)=d \\ \text{store}(t)=s}} \text{AcceptedNetContribution}(t)
+\]
+
+This equation defines the business result independently of Spark,
+state stores, or micro-batch execution.
+
+*Step 2: choose processing patterns.*
+
+```text
+Authoritative transaction changes (event_id, transaction_id, source_version, event_time)
+  → Incremental version-aware processing (deduplicate, reject stale versions, apply changes)
+      ├─ Stateful streaming  → event-time windows, provisional aggregates (30-second freshness)
+      └─ Incremental batch   → corrections, replay, reconciliation (final financial totals)
+          → Versioned aggregate publication (replay-safe, corrected, validated results)
+```
+
+*Step 3: implement deterministic current-state processing.* A core
+operation is to retain the newest source version for each transaction.
+
+```python
+from pyspark.sql import functions as F
+from pyspark.sql.window import Window
+
+def latest_transaction_state(changes):
+    w = (
+        Window.partitionBy("transaction_id")
+        .orderBy(F.col("source_version").desc())
+    )
+    return (
+        changes
+        .withColumn("rn", F.row_number().over(w))
+        .filter(F.col("rn") == 1)
+        .drop("rn")
+    )
+```
+
+This function assumes one authoritative value per
+`(transaction_id, source_version)`. Production input validation must
+reject conflicting versions. For incremental execution, the result
+must also be compared against durable current state.
+
+*Step 4: maintain retractable aggregates.* Suppose an accepted
+transaction changes from ₹1,000 to ₹800 — the correct adjustment is
+−₹200, not an additional +₹800.
+
+```python
+def calculate_deltas(changes):
+    return changes.withColumn(
+        "amount_delta",
+        F.col("new_amount") - F.col("old_amount"),
+    )
+```
+
+The previous contribution must come from the authoritative accepted
+state. If the store or business date changes, produce a negative
+contribution for the old group and a positive contribution for the new
+group.
+
+*Step 5: define the physical execution plan* for store-level aggregate
+updates:
+
+```text
+HashAggregate(final)
+  Exchange hashpartitioning(store_id, sales_date)
+    HashAggregate(partial)
+      Project(amount_delta)
+        Scan accepted changes
+```
+
+Evaluate this plan for partition skew, shuffle volume, aggregation
+reduction ratio, state-store reads and writes, task spill, and output
+commit duration.
+
+*Step 6: define recovery boundaries.* Use durable checkpoints for
+streaming state and transactional or idempotent publication for
+aggregate results. For historical replay, pin an authoritative input
+snapshot, recompute affected partitions, validate the results, and
+publish through a controlled versioned process.
+
+*Step 7: define observability.*
+
+| Metric | Why it matters |
+| --- | --- |
+| Input records/sec | Processing demand |
+| Processed records/sec | Sustainable capacity |
+| p95/p99 processing latency | Freshness SLO |
+| State rows and bytes | State growth |
+| Watermark progress | Event-time finalization |
+| Shuffle bytes and spills | Distributed execution efficiency |
+| Checkpoint duration | Recovery overhead |
+| Late corrections pending | Financial correctness |
+| Replay mismatch count | Deterministic processing validation |
+
+*Step 8: validate with chaos testing.* Test crashes before and after
+output commits, duplicate events, out-of-order versions, late
+corrections, state-store restoration, and concurrent historical
+replay. The final acceptance criterion is not merely that the
+processing job restarts — it is that the final business result
+remains correct.
+
+**Production failure matrix — final interview reference**
+
+| Failure scenario | Main risk | Required guarantee |
+| --- | --- | --- |
+| Duplicate source event | Double counting | Stable-ID deduplication |
+| Out-of-order update | Stale overwrite | Authoritative version ordering |
+| Late event after watermark | Missing historical revenue | Reconciliation |
+| Driver crash after output commit | Duplicate output | Idempotent commit |
+| Worker crash during state update | Lost intermediate state | Checkpoint restoration |
+| Checkpoint unavailable | Incomplete recovery | Retained source + state reconstruction plan |
+| Historical replay overlaps live updates | Stale result publication | Version boundary and catch-up |
+| Aggregate correction applied twice | Incorrect financial total | Atomic version-aware delta |
+| Hot key during peak load | Excessive latency | Skew-aware processing |
+| Unbounded state | Resource exhaustion | Explicit state lifecycle |
+
+**Runnable correctness test lab.** The following local PySpark test
+verifies several central properties from the interview. It does not
+simulate distributed crashes or provide transactional sink guarantees,
+but it establishes a deterministic reference for version-aware
+processing.
+
+```python
+from pyspark.sql import SparkSession, functions as F
+from pyspark.sql.window import Window
+
+spark = (
+    SparkSession.builder
+    .master("local[4]")
+    .appName("RetailProcessingCorrectness")
+    .getOrCreate()
+)
+
+schema = """
+    transaction_id STRING,
+    source_version INT,
+    store_id STRING,
+    amount DOUBLE,
+    is_deleted BOOLEAN
+"""
+
+changes = spark.createDataFrame(
+    [
+        ("T1", 1, "S1", 1000.0, False),
+        ("T1", 3, "S1", 0.0, True),
+        ("T1", 2, "S1", 900.0, False),
+        ("T2", 1, "S1", 500.0, False),
+        ("T2", 1, "S1", 500.0, False),
+        ("T3", 1, "S2", 200.0, False),
+    ],
+    schema,
+)
+
+# Reject conflicting payloads for identical keys/versions.
+conflicts = (
+    changes
+    .groupBy("transaction_id", "source_version")
+    .agg(F.countDistinct("amount", "is_deleted").alias("distinct_payloads"))
+    .filter(F.col("distinct_payloads") > 1)
+)
+assert conflicts.count() == 0
+
+# Keep the newest accepted version per transaction (out-of-order versions).
+w = Window.partitionBy("transaction_id").orderBy(F.col("source_version").desc())
+latest = (
+    changes
+    .withColumn("rn", F.row_number().over(w))
+    .filter(F.col("rn") == 1)
+    .drop("rn")
+)
+assert latest.filter(F.col("transaction_id") == "T1").collect()[0]["source_version"] == 3
+print("PASS: out-of-order versions")
+
+# Duplicate events collapse to a single accepted row per key.
+assert latest.filter(F.col("transaction_id") == "T2").count() == 1
+print("PASS: duplicate events")
+
+# Delete tombstones are preserved, not resurrected by an older version.
+assert latest.filter(F.col("transaction_id") == "T1").collect()[0]["is_deleted"] is True
+print("PASS: delete tombstones")
+
+# Deterministic replay: recomputing from the same input yields the same result.
+replayed = (
+    changes
+    .withColumn("rn", F.row_number().over(w))
+    .filter(F.col("rn") == 1)
+    .drop("rn")
+)
+assert sorted(latest.collect()) == sorted(replayed.collect())
+print("PASS: deterministic replay")
+
+# Aggregate correctness: deleted transactions contribute zero revenue.
+revenue = (
+    latest
+    .filter(~F.col("is_deleted"))
+    .groupBy("store_id")
+    .agg(F.sum("amount").alias("revenue"))
+)
+assert revenue.filter(F.col("store_id") == "S1").collect()[0]["revenue"] == 500.0
+print("PASS: aggregate correctness")
+```
+
+Expected output:
+
+```text
+PASS: out-of-order versions
+PASS: duplicate events
+PASS: delete tombstones
+PASS: deterministic replay
+PASS: aggregate correctness
+```
+
+For financial data, use an appropriate fixed-precision decimal type
+rather than `DOUBLE`.
+
+**What a Walmart Principal-level interviewer is evaluating.** At this
+level, an interviewer expects you to explain not just how to implement
+a Spark operation, but why its result remains correct under
+duplication, disorder, retries, state expiration, and historical
+replay. The strongest answers connect four layers:
+
+1. **Business invariant** — what result must always remain correct?
+2. **Processing algorithm** — how are changes, windows, and state
+   computed?
+3. **Distributed execution** — what shuffles, state stores, and
+   bottlenecks arise?
+4. **Failure boundary** — what happens if the process crashes
+   immediately before or after a commit?
+
+**Self-assessment scorecard.** Rate your confidence from 1 (basic) to
+5 (can defend under challenging follow-ups):
+
+| Area | Covers | Confidence (1–5) |
+| --- | --- | --- |
+| Incremental correctness | Versions, tombstones, retractions, stale-event handling | — |
+| Event-time processing | Windows, watermark progression, late corrections | — |
+| Stateful processing | State stores, TTL, bounded joins, recovery | — |
+| Exactly-once effects | Replay, checkpoint boundaries, atomic commits | — |
+| Production architecture | Scale, SLA, failure testing, cost and trade-offs | — |
