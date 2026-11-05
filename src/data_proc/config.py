@@ -1,5 +1,10 @@
 """Central configuration for the ETL demo, driven by environment variables.
 
+Variables are read from the process environment, optionally pre-populated
+from a ``.env`` file (via ``python-dotenv``) if one exists in the current
+working directory or a parent of it; real environment variables always take
+precedence over ``.env`` values.
+
 Every path setting resolves relative to a *data home* directory rather than
 this file's location on disk, so the package behaves the same whether it is
 run from a checkout or installed as a library (e.g. from site-packages,
@@ -10,9 +15,21 @@ examples/run_*.py`` from the repo root) — and can be overridden with the
 ``DATA_PROC_HOME`` environment variable. Each individual path can also be
 overridden independently via its own environment variable.
 """
+
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from dotenv import find_dotenv, load_dotenv
+
+# Load variables from a .env file (if present) into the process environment
+# before any settings below are read. `usecwd=True` searches upward from the
+# current working directory rather than from this file's location on disk,
+# consistent with _data_home() below, so behavior does not depend on whether
+# data_proc is run from a checkout or installed as a library. Existing
+# environment variables always take precedence (load_dotenv never overrides
+# by default).
+load_dotenv(find_dotenv(usecwd=True))
 
 
 def _data_home() -> Path:
@@ -38,7 +55,9 @@ class Settings:
     """Runtime settings loaded from environment variables with sane defaults."""
 
     customers_csv: Path = field(
-        default_factory=lambda: _path_setting("CUSTOMERS_CSV", "data", "raw", "customers.csv")
+        default_factory=lambda: _path_setting(
+            "CUSTOMERS_CSV", "data", "raw", "customers.csv"
+        )
     )
     orders_csv: Path = field(
         default_factory=lambda: _path_setting("ORDERS_CSV", "data", "raw", "orders.csv")

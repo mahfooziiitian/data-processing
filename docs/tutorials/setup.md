@@ -50,13 +50,12 @@ Use `uv sync` alone to install only runtime dependencies.
 
 ## 3. Configuration
 
-Copy `.env.example` to `.env` and adjust if needed, then export the
-variables into your shell (the project does not depend on `python-dotenv`,
-so either `export $(cat .env | xargs)` or set these manually):
+Copy `.env.example` to `.env` and adjust if needed. `src/data_proc/config.py`
+automatically loads `.env` via `python-dotenv`, so there is no need to
+`export` or `source` the file yourself:
 
 ```bash
 cp .env.example .env
-export DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/data_processing_demo
 ```
 
 Defaults in `src/data_proc/config.py` already match the Docker Compose setup, so this
