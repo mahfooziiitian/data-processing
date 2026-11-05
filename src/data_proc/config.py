@@ -113,7 +113,7 @@ class Settings:
 
     database_url: str = os.getenv(
         "DATABASE_URL",
-        "******localhost:5432/data_processing_demo",
+        "postgresql+psycopg2://postgres:postgres@localhost:5432/data_processing_demo",
     )
 
     request_timeout_seconds: int = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "10"))
