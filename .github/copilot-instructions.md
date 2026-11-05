@@ -87,6 +87,10 @@ Conceptual rationale for design choices: `docs/explanation/concepts.md`.
   the Material theme features `navigation.tabs`, `toc.integrate`, and
   `navigation.footer` in `mkdocs.yml`; do not remove them during unrelated
   edits.
+- For requests to enhance, enrich, rewrite, or polish documentation, use the
+  `.github/skills/documentation-content-enhancer/SKILL.md` workflow before
+  editing. Keep repository facts verified and label hypothetical platform
+  examples clearly.
 - For documentation changes, run `uv run --group docs mkdocs build --strict`,
   `python3 .github/skills/diataxis-docs-audit/check_diataxis.py`, and
   `git diff --check`. Do not commit the generated `site/` directory.

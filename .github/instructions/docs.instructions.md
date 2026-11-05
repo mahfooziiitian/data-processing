@@ -16,6 +16,12 @@ applyTo: "docs/**/*.md,mkdocs.yml"
   pages should go in the matching subfolder and carry a `diataxis: ...`
   frontmatter key; use the `diataxis-docs-audit` skill
   (`.github/skills/diataxis-docs-audit/`) to check a page's fit.
+- When improving or expanding documentation, use the
+  `documentation-content-enhancer` skill
+  (`.github/skills/documentation-content-enhancer/`). It preserves the
+  page's primary Diátaxis purpose, improves substance and readability,
+  distinguishes verified repository behavior from hypothetical designs, and
+  requires the standard documentation checks.
 - Markdown filenames under `docs/` must be **lowercase** (e.g.
   `architecture.md`, `setup.md`, `concepts.md`), not `UPPERCASE.md` —
   this keeps links/paths consistent across OSes and with the
