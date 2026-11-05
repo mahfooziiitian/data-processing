@@ -113,6 +113,7 @@ from being interactive or rendered from real data.
 | Load | `src/data_proc/etl/load.py` | Persists DataFrames via SQLAlchemy; backend-agnostic (Postgres in this demo, SQLite in tests) |
 | Pipeline | `examples/run_pipeline.py` | Orchestrates the three stages and logs a run summary |
 | Schema | `sql/schema.sql` | Declarative DDL, auto-applied on Postgres container startup |
+| Kappa demo | `src/data_proc/kappa/`, `examples/run_kappa_stream.py` | Event-log + replay-based alternative to the batch pipeline — see [Kappa architecture demo](#kappa-architecture-demo) below |
 
 ## Design decisions
 
@@ -137,3 +138,49 @@ from being interactive or rendered from real data.
   per-stage tasks with explicit dependencies.
 - Add a data-quality layer (e.g., Great Expectations) between transform and
   load to assert invariants before writing to the warehouse.
+
+## Kappa architecture demo
+
+Alongside the batch ETL pipeline above, `src/data_proc/kappa/` +
+`examples/run_kappa_stream.py` demonstrate the **Kappa architecture**
+pattern: a single, unified stream-processing path, with no separate batch
+and speed layers. Where the batch pipeline recomputes everything from a
+CSV snapshot on every run (Lambda-style), the Kappa demo instead:
+
+1. Treats an append-only event log (`data/processed/kappa_events.jsonl`,
+   `src/data_proc/kappa/event_log.py`) as the single source of truth —
+   analogous to a Kafka topic, but file-based for a dependency-free demo.
+2. Processes new events incrementally, folding them onto previously
+   persisted per-order state (`src/data_proc/kappa/state.py`) and
+   advancing a checkpoint (`src/data_proc/kappa/checkpoint.py`).
+3. Supports **replay**: resetting the checkpoint and state to zero causes
+   the exact same `process()` function in `examples/run_kappa_stream.py`
+   to reprocess the entire log from scratch — there is no separate
+   backfill/recompute code path to keep in sync, which is the defining
+   trait of Kappa versus Lambda.
+4. Writes results with `upsert_dataframe()` (`src/data_proc/etl/load.py`)
+   into `kappa_customer_order_summary` (`sql/schema.sql`) — an idempotent,
+   key-scoped upsert rather than a full-table `replace`, since only a
+   subset of customers typically changes per incremental run.
+
+```mermaid
+flowchart LR
+    csv["data/raw/\ncustomers.csv, orders.csv"]
+    seed["seed_events()\n(one-time demo seeding)"]
+    log[("event_log\nkappa_events.jsonl")]
+    fold["fold_order_events()\n+ persisted order state"]
+    agg["build_customer_order_summary()"]
+    db[("PostgreSQL\nkappa_customer_order_summary")]
+
+    csv --> seed --> log
+    log -->|new events since checkpoint,\nor ALL events on replay| fold
+    fold --> agg -->|upsert_dataframe| db
+```
+
+The correctness invariant this demo is built to showcase: folding events
+in separate incremental batches (carrying state forward) must produce the
+same final state as folding the entire event history at once from empty
+state — see `tests/test_kappa_stream_transform.py`'s
+`test_incremental_folding_matches_full_replay` for this property verified
+directly, and `docs/how-to/run-kappa-demo.md` for a hands-on walkthrough
+(seed → process → cancel → replay).

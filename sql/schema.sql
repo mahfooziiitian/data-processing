@@ -32,3 +32,18 @@ CREATE TABLE IF NOT EXISTS customer_order_summary (
     total_spent     NUMERIC(10, 2) DEFAULT 0,
     last_order_date DATE
 );
+
+-- Populated by the Kappa demo (examples/run_kappa_stream.py), not the
+-- batch pipeline. Deliberately a separate table from
+-- customer_order_summary above: same analytical shape, but derived from
+-- data_proc.kappa's event-log + replay path instead of CSV batch extracts,
+-- to show both architectures can produce the same kind of output.
+CREATE TABLE IF NOT EXISTS kappa_customer_order_summary (
+    customer_id     INTEGER PRIMARY KEY,
+    name            TEXT,
+    email           TEXT,
+    country         TEXT,
+    order_count     INTEGER DEFAULT 0,
+    total_spent     NUMERIC(10, 2) DEFAULT 0,
+    last_order_date DATE
+);

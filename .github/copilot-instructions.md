@@ -11,15 +11,18 @@ no activated virtualenv convention; prefix with `uv run`.
 ```bash
 uv sync --all-groups          # install runtime + dev (pytest) + docs (mkdocs) deps
 docker compose up -d           # start local Postgres (auto-applies sql/schema.sql)
-uv run python examples/run_pipeline.py   # run the full ETL pipeline
+uv run python examples/run_pipeline.py   # run the full ETL (batch/Lambda-style) pipeline
+uv run python examples/run_kappa_stream.py --seed   # Kappa demo: seed sample events
+uv run python examples/run_kappa_stream.py          # Kappa demo: process new events
+uv run python examples/run_kappa_stream.py --replay # Kappa demo: reprocess the entire log
 uv run pytest -v                    # run all tests
 uv run pytest tests/test_transform.py::test_clean_orders_drops_missing_customer_and_computes_line_total  # single test
 uv run --group docs mkdocs serve          # preview docs site at :8000 with live reload
 uv run --group docs mkdocs build --strict # build docs, fail on warnings
 ```
 
-Equivalent `make` targets exist: `setup`, `up`, `down`, `test`, `run`, `docs`,
-`docs-serve`, `clean`.
+Equivalent `make` targets exist: `setup`, `up`, `down`, `test`, `run`,
+`run-kappa`, `docs`, `docs-serve`, `clean`.
 
 Tests do **not** require Docker/Postgres running — `tests/test_load.py` uses
 an in-memory SQLite engine, and `tests/test_extract.py` mocks the external
@@ -63,7 +66,10 @@ they can be tested/swapped independently:
   SQLAlchemy engine; used with Postgres in the app and SQLite in tests.
   Loads use `if_exists="replace"` to keep repeated pipeline runs idempotent
   for demo purposes (not an upsert/merge — don't assume incremental-load
-  semantics elsewhere).
+  semantics elsewhere). `upsert_dataframe(df, table_name, key_column,
+  engine)` is the key-scoped idempotent alternative (delete-matching-keys
+  then insert), used by the Kappa demo below — dialect-agnostic, so don't
+  add Postgres-specific `ON CONFLICT`/`MERGE` syntax to it.
 
 `examples/run_pipeline.py` wires these three stages together into the
 runnable demo pipeline (`run()`); it is intentionally outside the library
@@ -88,6 +94,21 @@ schema change requires `docker compose down -v` (drops the volume) before
 
 Full architecture write-up and diagram: `docs/explanation/architecture.md`.
 Conceptual rationale for design choices: `docs/explanation/concepts.md`.
+
+### Kappa demo (`src/data_proc/kappa/` + `examples/run_kappa_stream.py`)
+
+A second, independent demo alongside the batch ETL pipeline: it implements
+the **Kappa architecture** pattern (single unified stream-processing path,
+replay instead of a separate batch recompute) — see
+`.github/instructions/kappa.instructions.md` and
+`docs/explanation/architecture.md#kappa-architecture-demo`. Key invariant:
+`stream_transform.fold_order_events()` must be idempotent so folding
+events incrementally (checkpointed) or all at once (replay from offset 0)
+converges on identical results — don't modify this module without
+confirming `tests/test_kappa_stream_transform.py`'s incremental-vs-replay
+test still passes. Writes use `etl.load.upsert_dataframe()` (key-scoped
+upsert) into `kappa_customer_order_summary`, a separate table from the
+batch pipeline's `customer_order_summary`.
 
 ## Conventions
 

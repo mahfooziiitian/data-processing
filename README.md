@@ -30,6 +30,26 @@ a diagram and data flow details, and
 [`docs/explanation/concepts.md`](docs/explanation/concepts.md) for the data
 engineering concepts this demo illustrates.
 
+### Kappa architecture demo
+
+`examples/run_kappa_stream.py` + `src/data_proc/kappa/` demonstrate the
+**Kappa architecture** pattern alongside the batch pipeline above: a single
+stream-processing path (append-only event log → fold into state → upsert)
+that handles both incremental runs and full historical **replay** with no
+separate batch/speed layers to keep in sync.
+
+```bash
+uv run python examples/run_kappa_stream.py --seed     # seed sample order events
+uv run python examples/run_kappa_stream.py             # process new events (incremental)
+uv run python examples/run_kappa_stream.py --cancel 1001  # append & process a cancellation
+uv run python examples/run_kappa_stream.py --replay    # reprocess the ENTIRE log from scratch
+```
+
+See [`docs/how-to/run-kappa-demo.md`](docs/how-to/run-kappa-demo.md) for a
+full walkthrough and
+[`docs/explanation/architecture.md`](docs/explanation/architecture.md#kappa-architecture-demo)
+for the design rationale.
+
 ## Quickstart
 
 This project uses [uv](https://docs.astral.sh/uv/) for Python dependency
@@ -78,12 +98,14 @@ make docs-serve   # serves http://127.0.0.1:8000 with live reload
 ```
 .
 ├── data/raw/                     Sample input CSVs (customers, orders)
-├── data/processed/               Reserved for pipeline output artifacts (gitignored)
+├── data/processed/               Reserved for pipeline/stream output artifacts (gitignored)
 ├── src/data_proc/config.py       Centralized, environment-driven settings
 ├── src/data_proc/etl/            Reusable extract.py / transform.py / load.py library
+├── src/data_proc/kappa/          Event log, checkpoint, state, fold (Kappa demo library)
 ├── examples/run_pipeline.py      Demo script: wires extract -> transform -> load
+├── examples/run_kappa_stream.py  Demo script: single stream path + replay
 ├── sql/schema.sql                PostgreSQL DDL, auto-applied by docker-compose
-├── tests/                        pytest unit tests for each ETL stage
+├── tests/                        pytest unit tests for each ETL/kappa module
 ├── docker-compose.yml            Local PostgreSQL for the demo
 ├── docs/                         Architecture, concepts, and setup docs (MkDocs site)
 ├── mkdocs.yml                    MkDocs site configuration

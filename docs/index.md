@@ -24,6 +24,16 @@ Continue to [Architecture](explanation/architecture.md) for a data-flow
 diagram, or [Concepts](explanation/concepts.md) for the data engineering
 ideas this demo illustrates.
 
+### Kappa architecture demo
+
+`examples/run_kappa_stream.py` + `src/data_proc/kappa/` demonstrate the
+**Kappa architecture** pattern alongside the batch pipeline above: a single
+unified stream-processing path (event log → fold into state → upsert) that
+handles incremental runs and full historical **replay** identically. See
+[How to run the Kappa demo](how-to/run-kappa-demo.md) for a walkthrough and
+[Architecture → Kappa architecture demo](explanation/architecture.md#kappa-architecture-demo)
+for the design rationale.
+
 ## Quickstart
 
 ```bash
@@ -48,9 +58,11 @@ docker compose exec postgres psql -U postgres -d data_processing_demo \
 ├── data/raw/                     Sample input CSVs (customers, orders)
 ├── src/data_proc/config.py       Centralized, environment-driven settings
 ├── src/data_proc/etl/            Reusable extract.py / transform.py / load.py library
+├── src/data_proc/kappa/          Event log, checkpoint, state, fold (Kappa demo library)
 ├── examples/run_pipeline.py      Demo script: wires extract -> transform -> load
+├── examples/run_kappa_stream.py  Demo script: single stream path + replay
 ├── sql/schema.sql                PostgreSQL DDL, auto-applied by docker-compose
-├── tests/                        pytest unit tests for each ETL stage
+├── tests/                        pytest unit tests for each ETL/kappa module
 ├── docker-compose.yml            Local PostgreSQL for the demo
 └── docs/                         This documentation site (MkDocs)
 ```

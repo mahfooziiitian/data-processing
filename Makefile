@@ -18,6 +18,9 @@ test:
 run:
 	uv run python examples/run_pipeline.py
 
+run-kappa:
+	uv run python examples/run_kappa_stream.py
+
 docs:
 	uv run --group docs mkdocs build --strict
 

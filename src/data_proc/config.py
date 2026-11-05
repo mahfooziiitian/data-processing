@@ -14,6 +14,12 @@ class Settings:
     orders_csv: Path = BASE_DIR / "data" / "raw" / "orders.csv"
     processed_dir: Path = BASE_DIR / "data" / "processed"
 
+    # Kappa demo: append-only event log + consumer checkpoint (gitignored,
+    # like the rest of data/processed/).
+    kappa_event_log: Path = BASE_DIR / "data" / "processed" / "kappa_events.jsonl"
+    kappa_checkpoint: Path = BASE_DIR / "data" / "processed" / "kappa_checkpoint.json"
+    kappa_state_path: Path = BASE_DIR / "data" / "processed" / "kappa_order_state.json"
+
     # Public demo API used to enrich customer data (no auth required).
     enrichment_api_url: str = os.getenv(
         "ENRICHMENT_API_URL", "https://jsonplaceholder.typicode.com/users"
