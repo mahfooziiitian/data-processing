@@ -11,6 +11,7 @@ nav:
       - Concepts: explanation/concepts.md
       - Data Processing Patterns: explanation/data-processing-patterns.md
       - Data Processing Patterns Interview: explanation/data-processing-patterns-interview.md
+      - Data Processing Patterns Company Interviews: explanation/data-processing-patterns-company-interviews.md
 
 theme:
   name: material
