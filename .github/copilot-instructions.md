@@ -62,8 +62,8 @@ automatically by the Postgres container on first startup
 schema change requires `docker compose down -v` (drops the volume) before
 `up -d` re-applies it.
 
-Full architecture write-up and diagram: `docs/explanation/ARCHITECTURE.md`.
-Conceptual rationale for design choices: `docs/explanation/CONCEPTS.md`.
+Full architecture write-up and diagram: `docs/explanation/architecture.md`.
+Conceptual rationale for design choices: `docs/explanation/concepts.md`.
 
 ## Conventions
 

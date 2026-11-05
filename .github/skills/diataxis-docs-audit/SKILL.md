@@ -31,9 +31,9 @@ matching `diataxis:` frontmatter key:
 | File | Quadrant | Why |
 | --- | --- | --- |
 | `docs/index.md` | Landing page | Overview + links out, not a lesson/task/reference/theory page itself |
-| `docs/tutorials/SETUP.md` | Tutorial | Numbered, linear, "do this then this" first-run walkthrough |
-| `docs/explanation/ARCHITECTURE.md` | Explanation | Discusses design/data-flow rationale, not actionable steps |
-| `docs/explanation/CONCEPTS.md` | Explanation | Teaches concepts (ETL, Lambda, Kappa, Data mesh, ...) with no steps to execute |
+| `docs/tutorials/setup.md` | Tutorial | Numbered, linear, "do this then this" first-run walkthrough |
+| `docs/explanation/architecture.md` | Explanation | Discusses design/data-flow rationale, not actionable steps |
+| `docs/explanation/concepts.md` | Explanation | Teaches concepts (ETL, Lambda, Kappa, Data mesh, ...) with no steps to execute |
 
 `docs/how-to/` and `docs/reference/` exist (currently empty, holding only
 a `.gitkeep`) — they're reserved for content such as "how to add a new
@@ -56,7 +56,8 @@ in when the user asks for that specific guide/reference.
    - files with no assigned quadrant,
    - tutorials/how-tos with no numbered step sequence,
    - reference pages with heavy narrative ("why"/"trade-off" prose),
-   - explanation pages that read like a step-by-step how-to instead.
+   - explanation pages that read like a step-by-step how-to instead,
+   - non-lowercase filenames (except `README.md`).
 
 2. Treat the script's output as **advisory signal, not a hard gate** —
    it uses simple text heuristics and will have false positives/negatives.
@@ -65,7 +66,7 @@ in when the user asks for that specific guide/reference.
 3. For each real issue found, prefer the smallest fix:
    - A page mixing two modes → split the offending section into its own
      page (e.g. pull a "why we did X" aside out of a how-to into
-     Explanation/CONCEPTS.md), and cross-link the two.
+     explanation/concepts.md), and cross-link the two.
    - A page with the wrong mode for its stated purpose → rewrite in the
      correct mode rather than moving it, if the content/location is
      otherwise right.

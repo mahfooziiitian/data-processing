@@ -16,6 +16,13 @@ applyTo: "docs/**/*.md,mkdocs.yml"
   pages should go in the matching subfolder and carry a `diataxis: ...`
   frontmatter key; use the `diataxis-docs-audit` skill
   (`.github/skills/diataxis-docs-audit/`) to check a page's fit.
+- Markdown filenames under `docs/` must be **lowercase** (e.g.
+  `architecture.md`, `setup.md`, `concepts.md`), not `UPPERCASE.md` —
+  this keeps links/paths consistent across OSes and with the
+  `docs/<quadrant>/` folder convention above. `README.md` is the sole
+  repo-wide exception (GitHub convention expects it uppercase); a
+  `SKILL.md` under `.github/skills/*/` is also exempt since the skill
+  filename is required by the Copilot CLI skill spec, not a `docs/` page.
 - Adding a new page under `docs/` requires also adding it to the `nav:`
   list in `mkdocs.yml`, or it won't appear in the site navigation.
 - Validate changes with `uv run --group docs mkdocs build --strict` (fails

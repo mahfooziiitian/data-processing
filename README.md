@@ -25,9 +25,9 @@ The pipeline (`src/etl/pipeline.py`) runs three stages:
 3. **Load** — writes the resulting `customers`, `orders`, and
    `customer_order_summary` tables into PostgreSQL.
 
-See [`docs/explanation/ARCHITECTURE.md`](docs/explanation/ARCHITECTURE.md) for
+See [`docs/explanation/architecture.md`](docs/explanation/architecture.md) for
 a diagram and data flow details, and
-[`docs/explanation/CONCEPTS.md`](docs/explanation/CONCEPTS.md) for the data
+[`docs/explanation/concepts.md`](docs/explanation/concepts.md) for the data
 engineering concepts this demo illustrates.
 
 ## Quickstart
@@ -62,7 +62,7 @@ make down    # stop postgres
 ```
 
 Full setup instructions, including troubleshooting, are in
-[`docs/tutorials/SETUP.md`](docs/tutorials/SETUP.md).
+[`docs/tutorials/setup.md`](docs/tutorials/setup.md).
 
 ## Documentation site
 

@@ -167,9 +167,20 @@ def main() -> int:
     rows: list[tuple[str, str, str]] = []
 
     for path in files:
+        naming_issue = None
+        if path.name != "README.md" and path.name.lower() != path.name:
+            naming_issue = (
+                f"Filename '{path.name}' is not lowercase — docs/ Markdown "
+                "filenames must be lowercase (README.md is the only exception)."
+            )
+
         if path.name.lower() == "index.md":
             # Landing pages are intentionally outside the four quadrants.
-            rows.append((str(path.relative_to(docs_root)), "landing page", "-"))
+            rows.append(
+                (str(path.relative_to(docs_root)), "landing page", naming_issue or "-")
+            )
+            if naming_issue:
+                had_issue = True
             continue
 
         text = path.read_text(encoding="utf-8")
@@ -177,6 +188,8 @@ def main() -> int:
         quadrant = infer_quadrant(path, docs_root, meta)
         stats = analyze(body)
         issues = warnings_for(quadrant, stats)
+        if naming_issue:
+            issues.append(naming_issue)
 
         if issues:
             had_issue = True

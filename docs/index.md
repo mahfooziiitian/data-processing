@@ -7,7 +7,7 @@ pattern — using Python, pandas, and PostgreSQL.
 
 This site documents the project. For the quickstart and repository layout,
 see the sections below; for hands-on setup steps see
-[Setup Guide](tutorials/SETUP.md).
+[Setup Guide](tutorials/setup.md).
 
 ## What it does
 
@@ -20,8 +20,8 @@ The pipeline (`src/etl/pipeline.py`) runs three stages:
    order date).
 3. **Load** — writes the resulting tables into PostgreSQL.
 
-Continue to [Architecture](explanation/ARCHITECTURE.md) for a data-flow
-diagram, or [Concepts](explanation/CONCEPTS.md) for the data engineering
+Continue to [Architecture](explanation/architecture.md) for a data-flow
+diagram, or [Concepts](explanation/concepts.md) for the data engineering
 ideas this demo illustrates.
 
 ## Quickstart
