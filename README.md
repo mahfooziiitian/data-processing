@@ -36,7 +36,7 @@ This project uses [uv](https://docs.astral.sh/uv/) for Python dependency
 management.
 
 ```bash
-# 1. Start PostgreSQL (applies src/data_proc/db/schema.sql automatically)
+# 1. Start PostgreSQL (applies sql/schema.sql automatically)
 docker compose up -d
 
 # 2. Install dependencies (creates .venv automatically)
@@ -80,9 +80,9 @@ make docs-serve   # serves http://127.0.0.1:8000 with live reload
 ├── data/raw/                     Sample input CSVs (customers, orders)
 ├── data/processed/               Reserved for pipeline output artifacts (gitignored)
 ├── src/data_proc/config.py       Centralized, environment-driven settings
-├── src/data_proc/db/schema.sql   PostgreSQL DDL, auto-applied by docker-compose
 ├── src/data_proc/etl/            Reusable extract.py / transform.py / load.py library
 ├── examples/run_pipeline.py      Demo script: wires extract -> transform -> load
+├── sql/schema.sql                PostgreSQL DDL, auto-applied by docker-compose
 ├── tests/                        pytest unit tests for each ETL stage
 ├── docker-compose.yml            Local PostgreSQL for the demo
 ├── docs/                         Architecture, concepts, and setup docs (MkDocs site)

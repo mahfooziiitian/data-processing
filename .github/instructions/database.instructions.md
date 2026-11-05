@@ -1,10 +1,10 @@
 ---
-applyTo: "src/data_proc/db/schema.sql,docker-compose.yml,.env.example"
+applyTo: "sql/schema.sql,docker-compose.yml,.env.example"
 ---
 
 # Database & infrastructure conventions
 
-- `src/data_proc/db/schema.sql` is the single source of truth for table
+- `sql/schema.sql` is the single source of truth for table
   DDL. It is auto-applied by the `postgres` container only on **first
   startup** (mounted into `/docker-entrypoint-initdb.d/`); after editing
   it, run `docker compose down -v` (drops the data volume) before

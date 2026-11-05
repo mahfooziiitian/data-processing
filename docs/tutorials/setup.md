@@ -22,7 +22,7 @@ This starts a `postgres:16-alpine` container on `localhost:5432` with:
 - password: `postgres`
 - database: `data_processing_demo`
 
-The schema in `src/data_proc/db/schema.sql` is applied automatically on first
+The schema in `sql/schema.sql` is applied automatically on first
 container startup (via Postgres's `docker-entrypoint-initdb.d` mechanism).
 If you change the schema file after the container's data volume already
 exists, recreate the volume to re-apply it:

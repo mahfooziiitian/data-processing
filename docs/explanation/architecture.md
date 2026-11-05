@@ -112,7 +112,7 @@ from being interactive or rendered from real data.
 | Transform | `src/data_proc/etl/transform.py` | Pure functions: cleaning, validation, joins, aggregation — no I/O, easy to unit test |
 | Load | `src/data_proc/etl/load.py` | Persists DataFrames via SQLAlchemy; backend-agnostic (Postgres in this demo, SQLite in tests) |
 | Pipeline | `examples/run_pipeline.py` | Orchestrates the three stages and logs a run summary |
-| Schema | `src/data_proc/db/schema.sql` | Declarative DDL, auto-applied on Postgres container startup |
+| Schema | `sql/schema.sql` | Declarative DDL, auto-applied on Postgres container startup |
 
 ## Design decisions
 

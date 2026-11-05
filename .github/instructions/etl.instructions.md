@@ -26,7 +26,7 @@ these functions into a runnable demo) belongs in `examples/`, not here.
 - Import settings from `data_proc.config.settings` (the module-level singleton);
   don't read `os.environ` directly in ETL modules.
 - If you add/rename a column or table produced by `transform.py`/`load.py`,
-  update `src/data_proc/db/schema.sql` to match in the same change.
+  update `sql/schema.sql` to match in the same change.
 - Don't add orchestration logic (e.g., a new `run()`-style entry point) to
   this package — add it as a new script under `examples/` instead, and
   have it import from `data_proc.etl`.

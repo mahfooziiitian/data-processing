@@ -27,7 +27,7 @@ ideas this demo illustrates.
 ## Quickstart
 
 ```bash
-# 1. Start PostgreSQL (applies src/data_proc/db/schema.sql automatically)
+# 1. Start PostgreSQL (applies sql/schema.sql automatically)
 docker compose up -d
 
 # 2. Install dependencies with uv
@@ -47,9 +47,9 @@ docker compose exec postgres psql -U postgres -d data_processing_demo \
 .
 ├── data/raw/                     Sample input CSVs (customers, orders)
 ├── src/data_proc/config.py       Centralized, environment-driven settings
-├── src/data_proc/db/schema.sql   PostgreSQL DDL, auto-applied by docker-compose
 ├── src/data_proc/etl/            Reusable extract.py / transform.py / load.py library
 ├── examples/run_pipeline.py      Demo script: wires extract -> transform -> load
+├── sql/schema.sql                PostgreSQL DDL, auto-applied by docker-compose
 ├── tests/                        pytest unit tests for each ETL stage
 ├── docker-compose.yml            Local PostgreSQL for the demo
 └── docs/                         This documentation site (MkDocs)

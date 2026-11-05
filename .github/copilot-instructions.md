@@ -10,7 +10,7 @@ no activated virtualenv convention; prefix with `uv run`.
 
 ```bash
 uv sync --all-groups          # install runtime + dev (pytest) + docs (mkdocs) deps
-docker compose up -d           # start local Postgres (auto-applies src/data_proc/db/schema.sql)
+docker compose up -d           # start local Postgres (auto-applies sql/schema.sql)
 uv run python examples/run_pipeline.py   # run the full ETL pipeline
 uv run pytest -v                    # run all tests
 uv run pytest tests/test_transform.py::test_clean_orders_drops_missing_customer_and_computes_line_total  # single test
@@ -31,18 +31,21 @@ API call via `unittest.mock.patch`.
 
 - **`src/data_proc/`** is the **library**: reusable, importable
   wrapper/helper/utility code only (`extract.py`, `transform.py`,
-  `load.py`, `config.py`, `db/schema.sql`). Nothing here should assume a
-  particular invocation context, and nothing here should orchestrate a
-  full run — see `.github/instructions/etl.instructions.md`.
+  `load.py`, `config.py`). Nothing here should assume a particular
+  invocation context, and nothing here should orchestrate a full run —
+  see `.github/instructions/etl.instructions.md`.
 - **`examples/`** is **usage/demo/exploration** code: scripts that import
   the library and show how to wire it into something runnable (currently
   `run_pipeline.py`, which orchestrates extract → transform → load into a
   full demo pipeline). New example/demo/exploration scripts go here, not
   in `src/data_proc/` — see
   `.github/instructions/examples.instructions.md`.
+- **`sql/`** (repo root) holds plain SQL DDL files (`schema.sql`) — not
+  Python code, so it lives outside `src/data_proc/` entirely. See
+  `.github/instructions/database.instructions.md`.
 - When adding a new capability, ask: is this a reusable building block
-  (→ `src/data_proc/`) or a demonstration of using existing building
-  blocks (→ `examples/`)? Don't blend the two in one file.
+  (→ `src/data_proc/`), a demonstration of using existing building blocks
+  (→ `examples/`), or SQL DDL (→ `sql/`)? Don't blend these in one file.
 
 The three ETL stages in `src/data_proc/etl/` are each their own module so
 they can be tested/swapped independently:
@@ -76,8 +79,8 @@ sourced from env vars (`DATABASE_URL`, `ENRICHMENT_API_URL`,
 singleton and imported from there — don't read `os.environ` directly in
 other modules.
 
-`src/data_proc/db/schema.sql` is the source of truth for table DDL and is
-applied automatically by the Postgres container on first startup
+`sql/schema.sql` is the source of truth for table DDL and is applied
+automatically by the Postgres container on first startup
 (`docker-entrypoint-initdb.d`). If you change table shape in
 `transform.py`/`load.py`, update `schema.sql` to match, and note that a
 schema change requires `docker compose down -v` (drops the volume) before
@@ -91,9 +94,12 @@ Conceptual rationale for design choices: `docs/explanation/concepts.md`.
 - The installable root package is `data_proc`, living in the src layout at
   `src/data_proc/` (`pyproject.toml`'s `[tool.hatch.build.targets.wheel]`
   maps `src/data_proc` to the `data_proc` package). Imports are rooted at
-  the package as `data_proc.etl.*`, `data_proc.db.*`, `data_proc.config`
-  (not relative imports) — `uv sync` installs it in editable mode, so
-  `import data_proc` resolves from any working directory once synced.
+  the package as `data_proc.etl.*`, `data_proc.config` (not relative
+  imports) — `uv sync` installs it in editable mode, so `import data_proc`
+  resolves from any working directory once synced. Root-level `sql/`
+  holds plain `.sql` files (schema/DDL); it's not Python code, so it
+  lives outside `src/data_proc/` at the repo root rather than inside the
+  Python package.
 - `pyproject.toml` declares a standard `[build-system]`
   (hatchling) so `data_proc` installs as an editable package; this is
   still a demo application, not a published library — don't add
