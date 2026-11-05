@@ -1,0 +1,30 @@
+[project]
+name = "data-processing"
+version = "0.1.0"
+description = "A data-processing ETL proof-of-concept and demo: extract from CSV/API sources, transform with pandas, and load into PostgreSQL."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=3.1.1",
+    "psycopg2-binary>=2.9.13",
+    "requests>=2.34.2",
+    "sqlalchemy>=2.1.8",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.uv]
+# This is an application (ETL pipeline + CLI), not a distributable library,
+# so uv manages the environment without building/installing it as a package.
+package = false

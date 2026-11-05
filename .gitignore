@@ -1,3 +1,18 @@
 .idea/
 .venv/
 .vscode/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local environment
+.env
+
+# Pipeline output artifacts
+data/processed/*
+!data/processed/.gitkeep
+
+# MkDocs build output
+site/

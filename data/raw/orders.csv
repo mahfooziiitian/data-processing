@@ -1,0 +1,21 @@
+order_id,customer_id,product,quantity,unit_price,order_date
+1001,1,Wireless Mouse,2,19.99,2023-06-01
+1002,1,Mechanical Keyboard,1,89.50,2023-06-03
+1003,2,USB-C Hub,3,24.00,2023-06-05
+1004,3,Monitor Stand,1,45.00,2023-06-06
+1005,4,Webcam HD,1,59.99,2023-06-07
+1006,5,Noise Cancelling Headphones,1,120.00,2023-06-09
+1007,2,Laptop Sleeve,2,15.50,2023-06-10
+1008,6,Desk Lamp,1,32.75,2023-06-11
+1009,7,Graphic Tablet,1,210.00,2023-06-12
+1010,8,Bluetooth Speaker,2,45.00,2023-06-13
+1011,9,External SSD 1TB,1,99.99,2023-06-15
+1012,10,Ergonomic Chair,1,249.00,2023-06-16
+1013,3,Wireless Mouse,1,19.99,2023-06-18
+1014,1,External SSD 1TB,1,99.99,2023-06-19
+1015,,Unknown Gadget,1,10.00,2023-06-20
+1016,4,USB-C Hub,2,24.00,2023-06-21
+1017,5,Laptop Sleeve,1,15.50,2023-06-22
+1018,6,Monitor Stand,2,45.00,2023-06-23
+1019,7,Desk Lamp,3,32.75,2023-06-24
+1020,8,Webcam HD,1,59.99,2023-06-25
