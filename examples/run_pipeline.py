@@ -1,6 +1,11 @@
-"""Pipeline orchestration: wires extract -> transform -> load together.
+"""Example: wire the data_proc library functions together into a full
+demo ETL run (extract -> transform -> load).
 
-Run directly with: `python -m data_proc.etl.pipeline`
+This is usage/demo code, not part of the `data_proc` library itself — it
+shows how an application would compose the reusable extract/transform/load
+helpers in `src/data_proc/etl/`. Run directly with:
+
+    uv run python examples/run_pipeline.py
 """
 import logging
 

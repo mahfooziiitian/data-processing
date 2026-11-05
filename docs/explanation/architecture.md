@@ -111,7 +111,7 @@ from being interactive or rendered from real data.
 | Extract | `src/data_proc/etl/extract.py` | Pulls raw data from heterogeneous sources (CSV, REST API) into DataFrames; isolates I/O and failure handling |
 | Transform | `src/data_proc/etl/transform.py` | Pure functions: cleaning, validation, joins, aggregation — no I/O, easy to unit test |
 | Load | `src/data_proc/etl/load.py` | Persists DataFrames via SQLAlchemy; backend-agnostic (Postgres in this demo, SQLite in tests) |
-| Pipeline | `src/data_proc/etl/pipeline.py` | Orchestrates the three stages and logs a run summary |
+| Pipeline | `examples/run_pipeline.py` | Orchestrates the three stages and logs a run summary |
 | Schema | `src/data_proc/db/schema.sql` | Declarative DDL, auto-applied on Postgres container startup |
 
 ## Design decisions
@@ -132,7 +132,8 @@ from being interactive or rendered from real data.
 - Swap `extract.py`'s CSV reads for a cloud object store (S3/GCS) or a
   streaming source (Kafka) without touching `transform.py` or `load.py`.
 - Introduce an orchestrator (Airflow/Dagster/Prefect) that calls
-  `data_proc.etl.pipeline.run()` as a single task, or splits it into per-stage
-  tasks with explicit dependencies.
+  `run_pipeline.run()` (moving/importing the function from `examples/`
+  into the orchestrated project) as a single task, or splits it into
+  per-stage tasks with explicit dependencies.
 - Add a data-quality layer (e.g., Great Expectations) between transform and
   load to assert invariants before writing to the warehouse.

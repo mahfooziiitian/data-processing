@@ -29,7 +29,7 @@ of increasing latency requirements and operational complexity:
 This repo implements **batch processing**: `pipeline.run()` reads the full
 contents of `data/raw/*.csv` on every invocation and reloads the target
 tables from scratch (see "Idempotent loads" below). It is invoked on
-demand (`uv run python -m data_proc.etl.pipeline`) or, in production, by a
+demand (`uv run python examples/run_pipeline.py`) or, in production, by a
 scheduler (cron, Airflow, Dagster) — the pipeline code itself has no
 notion of scheduling.
 
@@ -134,7 +134,7 @@ Incoming data ──────┤         │ recomputed) │    │  layer)  
 
 - **Batch layer** — processes the *complete* historical dataset on a
   schedule, recomputing exact, authoritative "batch views." This is
-  exactly what `src/data_proc/etl/pipeline.py` does today: it has strong consistency
+  exactly what `examples/run_pipeline.py` does today: it has strong consistency
   but high latency (the view is only as fresh as the last full run).
 - **Speed layer** — processes only data arrived *since* the last batch
   run, producing approximate "real-time views" with low latency, to cover

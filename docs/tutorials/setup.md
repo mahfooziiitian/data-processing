@@ -65,7 +65,7 @@ step is optional for a local demo run.
 ## 4. Run the pipeline
 
 ```bash
-uv run python -m data_proc.etl.pipeline
+uv run python examples/run_pipeline.py
 ```
 
 Expected log output ends with a summary like:

@@ -11,7 +11,7 @@ no activated virtualenv convention; prefix with `uv run`.
 ```bash
 uv sync --all-groups          # install runtime + dev (pytest) + docs (mkdocs) deps
 docker compose up -d           # start local Postgres (auto-applies src/data_proc/db/schema.sql)
-uv run python -m data_proc.etl.pipeline   # run the full ETL pipeline
+uv run python examples/run_pipeline.py   # run the full ETL pipeline
 uv run pytest -v                    # run all tests
 uv run pytest tests/test_transform.py::test_clean_orders_drops_missing_customer_and_computes_line_total  # single test
 uv run --group docs mkdocs serve          # preview docs site at :8000 with live reload
@@ -27,9 +27,25 @@ API call via `unittest.mock.patch`.
 
 ## Architecture
 
-Three-stage ETL pipeline (`src/data_proc/etl/`), orchestrated by
-`pipeline.py`, with each stage in its own module so they can be
-tested/swapped independently:
+`src/data_proc/` vs. `examples/` — a strict split:
+
+- **`src/data_proc/`** is the **library**: reusable, importable
+  wrapper/helper/utility code only (`extract.py`, `transform.py`,
+  `load.py`, `config.py`, `db/schema.sql`). Nothing here should assume a
+  particular invocation context, and nothing here should orchestrate a
+  full run — see `.github/instructions/etl.instructions.md`.
+- **`examples/`** is **usage/demo/exploration** code: scripts that import
+  the library and show how to wire it into something runnable (currently
+  `run_pipeline.py`, which orchestrates extract → transform → load into a
+  full demo pipeline). New example/demo/exploration scripts go here, not
+  in `src/data_proc/` — see
+  `.github/instructions/examples.instructions.md`.
+- When adding a new capability, ask: is this a reusable building block
+  (→ `src/data_proc/`) or a demonstration of using existing building
+  blocks (→ `examples/`)? Don't blend the two in one file.
+
+The three ETL stages in `src/data_proc/etl/` are each their own module so
+they can be tested/swapped independently:
 
 - **`extract.py`** — reads `data/raw/customers.csv` and `orders.csv`, and
   calls a public demo REST API (`jsonplaceholder.typicode.com`) for
@@ -45,6 +61,10 @@ tested/swapped independently:
   Loads use `if_exists="replace"` to keep repeated pipeline runs idempotent
   for demo purposes (not an upsert/merge — don't assume incremental-load
   semantics elsewhere).
+
+`examples/run_pipeline.py` wires these three stages together into the
+runnable demo pipeline (`run()`); it is intentionally outside the library
+package since it's orchestration/usage code, not a reusable helper.
 
 All stages pass plain **pandas DataFrames** between each other — this is
 the interchange format; don't introduce a different intermediate structure
