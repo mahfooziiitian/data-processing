@@ -221,7 +221,78 @@ or streaming. It's a good fit once a single team/pipeline (like this
 demo) no longer scales across many independent domains; it's unnecessary
 overhead for a project of this repo's size.
 
-## 6. Multi-source ingestion
+## 6. Putting it together: where these patterns fit in a full platform
+
+Sections 3–5 introduce Lambda, Kappa, and Data mesh as if they were
+independent choices. In a real enterprise data platform they actually
+stack — each pattern answers a different layer's question. A diagram
+helps more than more prose here:
+
+```
+ Source systems          Integration patterns         Data platform architecture            Consumption
+ ──────────────          ────────────────────         ───────────────────────────           ───────────
+ PostgreSQL  ──┐          CDC (row-level change   ┌──────────────────────────────┐
+ Salesforce  ──┤          capture)                │  Lambda / Kappa               │
+ REST APIs   ──┼───────▶  ETL / ELT (batch   ───▶ │  + Medallion layering:        │──────▶  BI
+ Kafka       ──┘          loads)                   │   Bronze → Silver → Gold      │         Analytics
+                          Event streaming           └──────────────────────────────┘         Machine learning
+                          (continuous)                                                        APIs
+
+                 Data mesh: domain ownership, data-product contracts, federated governance
+                 — spans every layer above; it is not another box in the data flow
+```
+
+Reading the diagram left to right:
+
+- **Source systems** are heterogeneous by nature — operational databases
+  (PostgreSQL), SaaS systems (Salesforce), third-party REST APIs, and
+  event brokers (Kafka). This demo's own sources (`customers.csv`,
+  `orders.csv`, the enrichment API) are a miniature version of this same
+  heterogeneity — see "Multi-source ingestion" below.
+- **Integration patterns** decide *how* data moves out of a source:
+  - **CDC (Change Data Capture)** — tails a source database's write-ahead
+    log / binlog (e.g. Postgres logical replication, Debezium) to stream
+    row-level inserts/updates/deletes as they happen, without re-reading
+    whole tables. It's the usual way an operational database feeds a
+    Kappa-style immutable log.
+  - **ETL/ELT** — this demo's pattern (see "§1. ETL"): extract a batch,
+    transform it (ETL) either before or after loading (ELT) into the
+    platform.
+  - **Event streaming** — source systems publish discrete events (e.g.
+    "order placed") directly onto a broker like Kafka, rather than
+    something external polling/tailing them.
+- **Data platform architecture** combines two orthogonal choices:
+  - *Processing model* — Lambda or Kappa (see §3–4): how batch and
+    real-time results are reconciled.
+  - **Medallion architecture** — a storage-layering convention,
+    independent of Lambda vs. Kappa, that organizes data by refinement
+    level as it moves through the platform:
+
+    | Layer | Contents | Purpose |
+    | --- | --- | --- |
+    | Bronze | Raw, as-ingested data (append-only, schema-on-read) | Full fidelity audit trail / replay source |
+    | Silver | Cleaned, validated, conformed data | Deduplicated, typed, business-key joined — safe to query directly |
+    | Gold | Aggregated, business-level data marts | Pre-joined/aggregated for BI and ML consumption |
+
+    This demo already follows the same shape without naming it: raw
+    `data/raw/*.csv` is Bronze, the cleaned/validated DataFrames inside
+    `transform.py` are Silver, and `customer_order_summary` is Gold.
+    Medallion layering works the same whether the underlying processing
+    is Lambda (separate batch/speed paths feeding each layer) or Kappa
+    (a single stream job materializing each layer as a view over the log).
+- **Consumption** is what the platform exists to serve — BI dashboards,
+  ad hoc analytics, ML training/inference, and APIs — typically reading
+  only from the Gold layer, since that's the layer shaped for querying
+  rather than for fidelity or correctness.
+- **Data mesh does not sit in this left-to-right flow at all.** It's a
+  governance pattern *across* the whole diagram: each domain can own its
+  own source-to-consumption pipeline (with its own choice of CDC/ETL/
+  streaming, Lambda/Kappa, Bronze/Silver/Gold), and the mesh only adds
+  the cross-cutting rules (data-product contracts, discoverability,
+  shared platform tooling, federated governance) that let those
+  independent pipelines interoperate — see §5.
+
+## 7. Multi-source ingestion
 
 Real pipelines rarely read from a single source. This demo combines a
 flat-file source (CSV) with an HTTP API source, showing how to normalize
@@ -230,7 +301,7 @@ before merging them.
 → `extract_customers_csv()` + `extract_customer_enrichment_api()` in
 `src/etl/extract.py`
 
-## 7. Data cleaning & validation
+## 8. Data cleaning & validation
 
 Raw data is messy. `clean_customers`/`clean_orders` demonstrate common
 cleaning operations: trimming whitespace, normalizing case, parsing dates,
@@ -238,27 +309,27 @@ deduplication, and dropping records that fail referential checks (an order
 with no `customer_id`).
 → `src/etl/transform.py`
 
-## 8. Derived/computed fields
+## 9. Derived/computed fields
 
 `line_total = quantity * unit_price` shows how transformation steps compute
 new fields rather than merely passing data through — a precursor to more
 complex business-rule logic.
 
-## 9. Aggregation / summarization
+## 10. Aggregation / summarization
 
 `build_customer_order_summary` groups fine-grained transactional data
 (orders) into a coarser-grained, analytics-friendly table (one row per
 customer with lifetime metrics) — the core idea behind building fact and
 summary tables in a warehouse.
 
-## 10. Idempotent loads
+## 11. Idempotent loads
 
 Using `if_exists="replace"` makes repeated pipeline runs produce the same
 end state, a simple way to achieve idempotency for a demo. Production
 systems typically use `MERGE`/`UPSERT`, partition overwrites, or slowly
 changing dimension (SCD) strategies instead — see "Where to go from here."
 
-## 11. Separation of concerns / testability
+## 12. Separation of concerns / testability
 
 Transform functions are pure (no I/O), which makes them trivial to unit
 test with small in-memory fixtures (`tests/test_transform.py`) without a
@@ -266,7 +337,7 @@ database or network connection. Extract/Load functions isolate I/O so they
 can be tested against lightweight substitutes (SQLite instead of Postgres,
 a mocked HTTP client instead of a live API).
 
-## 12. Configuration as code
+## 13. Configuration as code
 
 All environment-specific values (DB connection string, API URL, timeouts)
 flow through a single `Settings` object (`src/config.py`) sourced from
@@ -285,5 +356,7 @@ code runs unchanged across local, CI, and production environments.
 | Lambda architecture | Add a speed-layer job computing a delta table since the last batch run, and a merge view combining it with `customer_order_summary` (see "Lambda architecture") |
 | Kappa architecture | Replace the CSV extractor with an immutable log (e.g., Kafka), and recompute history by replaying it through the same stream job instead of running a separate batch pipeline (see "Kappa architecture") |
 | Data mesh | Treat `customer_order_summary` as a versioned, documented "data product" owned by a domain team, built on shared platform tooling (this repo's `docker-compose.yml`/`pyproject.toml`) rather than a one-off pipeline (see "Data mesh") |
+| Medallion architecture | Rename/organize `data/raw/` as Bronze, `transform.py`'s cleaned DataFrames as Silver, and `customer_order_summary` as Gold — the shape already matches, only the labels are missing (see "Putting it together") |
+| CDC (Change Data Capture) | Point a tool like Debezium at the demo Postgres container's write-ahead log and feed row-level change events into the pipeline instead of re-reading `customers`/`orders` wholesale each run (see "Putting it together") |
 | Scale | Swap pandas for PySpark DataFrames; the function signatures stay similar |
 | Observability | Add structured logging/metrics around each pipeline stage |
