@@ -25,15 +25,43 @@ _SUMMARY_COLUMNS = [
 ]
 
 
+def validate_gap_order_ids(events: list[dict], covered_order_ids: set) -> None:
+    """Reject creations that reuse IDs from the snapshot or covered log."""
+    seen = set(covered_order_ids)
+    for event in events:
+        if event["event_type"] == "order_created":
+            order_id = event["order_id"]
+            if order_id in seen:
+                raise ValueError(f"Repeated order creation: {order_id}")
+            seen.add(order_id)
+
+
 def compute_speed_increments(events: list[dict]) -> pd.DataFrame:
     """Aggregate only the given (already-gap-filtered) events into a
     per-customer increment: order count, spend, and last order date
-    contributed by this window alone — not a full customer summary."""
-    cancelled_ids = {e["order_id"] for e in events if e["event_type"] == "order_cancelled"}
-    rows = [
-        e for e in events
-        if e["event_type"] == "order_created" and e["order_id"] not in cancelled_ids
-    ]
+    contributed by this window alone — not a full customer summary.
+
+    A cancellation must refer to an order created in this gap: without
+    earlier order details this layer cannot subtract a batch-covered order.
+    """
+    active = {}
+    seen = set()
+    for event in events:
+        order_id = event["order_id"]
+        if event["event_type"] == "order_created":
+            if order_id in seen:
+                raise ValueError(f"Repeated order creation in speed gap: {order_id}")
+            seen.add(order_id)
+            active[order_id] = event
+        elif event["event_type"] == "order_cancelled":
+            if order_id not in active:
+                raise ValueError(
+                    f"Cannot cancel order {order_id}: it was not created in the speed gap"
+                )
+            del active[order_id]
+        else:
+            raise ValueError(f"Unsupported order event: {event['event_type']}")
+    rows = list(active.values())
     if not rows:
         return pd.DataFrame(columns=_SUMMARY_COLUMNS)
 

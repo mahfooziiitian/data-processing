@@ -11,9 +11,12 @@ topic: how batch, micro-batch, and continuous stream actually differ
 under the hood, how incremental processing works in a lakehouse, how
 state/windowing work, how real platforms combine several patterns at
 once, and a decision guide + interview-prep summary for applying all of
-it. Nothing on this page is implemented in this repo (it has no Spark,
-Flink, or Delta Lake) — read it as background for designing a platform
-this demo could grow into, not as a how-to for this codebase.
+it. The local demos illustrate [batch ETL](../tutorials/setup.md),
+[incremental state and replay](../how-to/run-kappa-demo.md), and
+[batch and speed-layer reconciliation](../how-to/run-lambda-demo.md).
+The Spark, Flink, and Delta Lake examples describe distributed systems.
+The [event-time tutorial](../tutorials/event-time-windows.md) uses a
+local fixture to illustrate windowing and late arrivals.
 
 For a larger practice set, see
 [50 advanced interview questions](data-processing-patterns-interview.md).
@@ -95,6 +98,9 @@ This example assumes `incremental_df` contains one deterministic final
 record per order, and does not represent deletes. Production CDC
 pipelines must additionally handle source ordering, duplicate events,
 tombstones, replay safety, and late-arriving changes.
+The [incremental changes tutorial](../tutorials/incremental-changes.md)
+explores those concerns with a small local change-feed fixture, not a
+database CDC connector.
 
 Common incremental processing techniques:
 
@@ -214,14 +220,11 @@ producing two distinct kinds of output.
 
 ## Choosing the right pattern — data architect decision guide
 
-Work through these questions in order:
-
-1. **Required processing latency** — hourly/daily, minutes, seconds, or
-   milliseconds/subsecond?
-2. **Data processing scope** — full dataset, or only new/changed records?
-3. **Processing logic** — simple filtering/enrichment/aggregation, or
-   complex joins, timers, session state, or CEP (complex event
-   processing)?
+Latency requirements narrow the choice of execution model. The scope of
+each run depends on whether it needs the full dataset or only new and
+changed records. Processing logic also shapes the design. Filtering and
+simple enrichment have different state requirements from stream joins,
+timers, session state, and complex event processing.
 
 A common "default" answer for a team starting out, when latency is in
 the minutes range and logic is moderately complex: **Spark Structured
@@ -267,21 +270,20 @@ internal state exactly once while an external API, database, or sink
 receives duplicate side effects. Idempotency keys, transactional sinks,
 or deduplication mechanisms may still be necessary.
 
-## Recommended learning sequence
+## Topics for further study
 
-For Data Architect and Principal Data Engineer preparation, study these
-in order:
+These topics cover the main dimensions of a processing-system design.
 
-1. **Execution patterns** — batch, micro-batch, continuous streaming.
-2. **Data change patterns** — full refresh, incremental, CDC-driven
+- **Execution patterns** — batch, micro-batch, continuous streaming.
+- **Data change patterns** — full refresh, incremental, CDC-driven
    processing.
-3. **Distributed computation patterns** — partitioning, shuffle,
+- **Distributed computation patterns** — partitioning, shuffle,
    broadcast, MapReduce, DAG execution.
-4. **State and time patterns** — stateless, stateful, event-time
+- **State and time patterns** — stateless, stateful, event-time
    windows, joins, watermarks.
-5. **Reliability patterns** — checkpointing, replay, idempotency,
+- **Reliability patterns** — checkpointing, replay, idempotency,
    exactly-once boundaries.
-6. **Architectural composition** — Lambda, Kappa, Medallion, and Data
+- **Architectural composition** — Lambda, Kappa, Medallion, and Data
    mesh (see [Putting it together](concepts.md#6-putting-it-together-where-these-patterns-fit-in-a-full-platform)).
 
 The most important architectural skill is not memorizing individual

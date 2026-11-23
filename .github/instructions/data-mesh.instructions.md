@@ -27,6 +27,10 @@ publishing both domains, the cross-domain consumer) belongs in
   don't add domain-specific logic (e.g. a `if domain == "orders"` branch)
   to either; new domain-specific rules belong in that domain's own
   `CONTRACT`/`build_product()`, not in the shared platform modules.
+- Contract validation checks the full declared shape, including date and
+  string values rather than accepting arbitrary object-typed values. Keep
+  validation independent of domain-specific fields and cover invalid values
+  in tests.
 - Every domain's `publish()` must validate with both
   `contract.validate_schema()` **and**
   `governance.check_global_policies()` before writing anything, and must

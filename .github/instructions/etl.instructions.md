@@ -23,6 +23,11 @@ these functions into a runnable demo) belongs in `examples/`, not here.
 - `load.py`'s `load_dataframe()` takes a generic SQLAlchemy `Engine` so it
   works against both Postgres (runtime) and SQLite (tests) — don't add
   Postgres-specific SQL inside it.
+- The batch demo uses `refresh_tables()` with parents before dependents;
+  deletes run in reverse order and inserts in forward order within one
+  transaction. Preserve the initialized schema and foreign keys, and test
+  rollback as well as repeated runs. `load_dataframe()` still defaults to
+  `if_exists="replace"` for independent tables.
 - Import settings from `data_proc.config.settings` (the module-level singleton);
   don't read `os.environ` directly in ETL modules.
 - If you add/rename a column or table produced by `transform.py`/`load.py`,

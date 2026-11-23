@@ -16,7 +16,7 @@ Start PostgreSQL and apply the schema (see
 [Setup Guide](../tutorials/setup.md) if you haven't already):
 
 ```bash
-docker compose up -d --wait
+docker compose --project-directory . -f infra/docker-compose.yml up -d --wait
 uv sync
 ```
 
@@ -90,3 +90,11 @@ The event log and watermark are plain local files under
 ```bash
 rm -f data/processed/lambda_events.jsonl data/processed/lambda_watermark.json
 ```
+
+The demo requires unique order IDs and checks new IDs against the CSV
+snapshot and the already-covered log before serving. Its speed layer
+rejects cancellations of orders created before the current watermark: it
+cannot subtract an order whose details are outside the gap. A batch
+recompute can absorb a
+cancellation of an event-created order; cancelling a CSV snapshot order
+is not supported.

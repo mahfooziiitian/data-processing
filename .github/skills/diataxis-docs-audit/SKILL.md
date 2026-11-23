@@ -25,8 +25,8 @@ should mostly be a short map, not itself fall into one of the four modes.
 
 ## Current mapping in this repo (verify before trusting — docs/ evolves)
 
-`docs/` is organized into quadrant subfolders, each file carrying a
-matching `diataxis:` frontmatter key:
+`docs/` is organized into quadrant subfolders; content pages should carry
+matching `diataxis:` frontmatter. `docs/index.md` is a landing page:
 
 | File | Quadrant | Why |
 | --- | --- | --- |
@@ -35,18 +35,16 @@ matching `diataxis:` frontmatter key:
 | `docs/explanation/architecture.md` | Explanation | Discusses design/data-flow rationale, not actionable steps |
 | `docs/explanation/concepts.md` | Explanation | Teaches concepts (ETL, Lambda, Kappa, Data mesh, ...) with no steps to execute |
 
-`docs/how-to/` and `docs/reference/` exist (currently empty, holding only
-a `.gitkeep`) — they're reserved for content such as "how to add a new
-ETL source", "how to reset the demo database", or a `schema.sql`/CLI
-reference page. Don't invent content for them unprompted; only fill them
-in when the user asks for that specific guide/reference.
+How-to guides and additional explanation pages also exist. Inspect the
+current tree and `mkdocs.yml` rather than treating this table as an
+exhaustive inventory.
 
 ## How to audit docs/
 
 1. Run the heuristic checker from the repo root:
 
    ```bash
-   python3 .github/skills/diataxis-docs-audit/check_diataxis.py
+   uv run python .github/skills/diataxis-docs-audit/check_diataxis.py
    ```
 
    It scans every `docs/**/*.md`, infers each file's quadrant (from YAML
@@ -58,12 +56,18 @@ in when the user asks for that specific guide/reference.
    - reference pages with heavy narrative ("why"/"trade-off" prose),
    - explanation pages that read like a step-by-step how-to instead,
    - non-lowercase filenames (except `README.md`).
+   Exit code 1 means warnings were found; exit code 2 means the docs
+   directory could not be read as a directory. The checker treats any
+   `index.md` as a landing page, so manually verify nested indexes against
+   the repository convention that only the root index is exempt.
 
 2. Treat the script's output as **advisory signal, not a hard gate** —
    it uses simple text heuristics and will have false positives/negatives.
    Always re-read the flagged file yourself before acting on a warning.
 
-3. For each real issue found, prefer the smallest fix:
+3. If asked only to audit, report findings with paths, evidence, and
+   recommendations without editing. If changes are requested, preserve
+   existing work and prefer the smallest fix for each in-scope issue:
    - A page mixing two modes → split the offending section into its own
      page (e.g. pull a "why we did X" aside out of a how-to into
      explanation/concepts.md), and cross-link the two.
@@ -75,6 +79,8 @@ in when the user asks for that specific guide/reference.
      rest of the project (ask the user before introducing subfolders —
      it's a bigger structural change than relabeling).
 
-4. After any restructuring, update `mkdocs.yml`'s `nav:` and
-   `.github/instructions/docs.instructions.md`, then validate with
-   `uv run --group docs mkdocs build --strict` before committing.
+4. When pages are added, moved, or removed, update `mkdocs.yml`'s `nav:`
+   and affected links. Update repository instructions only if their
+   documented conventions changed. For documentation changes, run the
+   strict MkDocs build, this checker, and `git diff --check`; report real
+   issues, advisory warnings, and checks that could not run separately.

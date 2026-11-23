@@ -19,14 +19,19 @@ _SUMMARY_COLUMNS = [
 ]
 
 
-def merge_views(batch_df: pd.DataFrame, speed_df: pd.DataFrame) -> pd.DataFrame:
+def merge_views(
+    batch_df: pd.DataFrame, speed_df: pd.DataFrame,
+    *, snapshot_customer_ids: set | None = None,
+) -> pd.DataFrame:
     """Combine the batch view (authoritative up to the watermark) with the
     speed view (increments since the watermark) into one served result.
 
     An outer join on `customer_id` so customers who only appear in the
     speed layer (e.g. a brand-new customer whose first order hasn't gone
     through a batch run yet) are still included; counts/spend are summed
-    and the latest order date across both layers wins.
+    and the latest order date across both layers wins. When snapshot IDs
+    are supplied, event-only customers use the latest gap profile; snapshot
+    customers retain their batch profile.
     """
     if speed_df.empty:
         return batch_df.reindex(columns=_SUMMARY_COLUMNS).copy()
@@ -36,9 +41,13 @@ def merge_views(batch_df: pd.DataFrame, speed_df: pd.DataFrame) -> pd.DataFrame:
     merged = batch_df.merge(
         speed_df, on="customer_id", how="outer", suffixes=("_batch", "_speed")
     )
-    merged["name"] = merged["name_batch"].combine_first(merged["name_speed"])
-    merged["email"] = merged["email_batch"].combine_first(merged["email_speed"])
-    merged["country"] = merged["country_batch"].combine_first(merged["country_speed"])
+    for column in ("name", "email", "country"):
+        batch_value = merged[f"{column}_batch"]
+        speed_value = merged[f"{column}_speed"]
+        merged[column] = batch_value.combine_first(speed_value)
+        if snapshot_customer_ids is not None:
+            event_only = ~merged["customer_id"].isin(snapshot_customer_ids)
+            merged.loc[event_only, column] = speed_value.combine_first(batch_value)[event_only]
     merged["order_count"] = (
         merged["order_count_batch"].fillna(0) + merged["order_count_speed"].fillna(0)
     ).astype(int)

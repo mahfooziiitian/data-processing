@@ -16,7 +16,7 @@ Start PostgreSQL and apply the schema (see
 [Setup Guide](../tutorials/setup.md) if you haven't already):
 
 ```bash
-docker compose up -d --wait
+docker compose --project-directory . -f infra/docker-compose.yml up -d --wait
 uv sync
 ```
 
@@ -42,9 +42,8 @@ docker exec data-processing-demo-postgres \
 ## 2. Process incrementally
 
 Running the script again with no flags only processes events appended
-since the last checkpoint — with nothing new, it's a no-op (0 events
-processed, but it still re-upserts current state, confirming the path is
-idempotent to re-run):
+since the last checkpoint. With nothing new, it reports zero events and
+still upserts the summary derived from the saved state.
 
 ```bash
 uv run python examples/run_kappa_stream.py
@@ -80,10 +79,15 @@ Query `kappa_customer_order_summary` once more: the result should be
 identical to the state right after step 3, confirming that incremental
 processing and full replay converge on the same answer.
 
+For a recovery exercise using temporary files and SQLite, see
+[Retry a Kappa run after a checkpoint write fails](../tutorials/kappa-recovery.md).
+
 ## Cleaning up
 
 The event log, checkpoint, and state files are plain local files under
-`data/processed/` (gitignored). To start over from an empty log:
+`data/processed/` (gitignored). The command below deletes the event history, checkpoint,
+and saved order state. Use it only for disposable demo data. The database
+summary remains until the next processing run.
 
 ```bash
 rm -f data/processed/kappa_events.jsonl data/processed/kappa_checkpoint.json data/processed/kappa_order_state.json

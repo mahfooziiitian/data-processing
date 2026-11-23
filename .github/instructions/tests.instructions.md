@@ -6,8 +6,9 @@ applyTo: "tests/**/*.py"
 
 - Tests must run **without Docker/Postgres**: use an in-memory SQLite
   engine (`create_engine("sqlite:///:memory:")`) for load-layer tests, and
-  `unittest.mock.patch` for the external enrichment API call — never hit
-  the live network or a real Postgres instance in a test.
+  mocks for the external enrichment API call — never hit the live network
+  or a real Postgres instance in a test. Use `tmp_path` for file-backed
+  state; do not overwrite the user's demo data.
 - Run via `uv run pytest -v` (not bare `pytest`); `data_proc` is an
   installed editable package (`src/data_proc`, see
   `[tool.hatch.build.targets.wheel]` in `pyproject.toml`), so
@@ -19,3 +20,6 @@ applyTo: "tests/**/*.py"
 - One test module per ETL stage (`test_extract.py`, `test_transform.py`,
   `test_load.py`); add new cases to the matching file rather than creating
   parallel test files.
+- Add focused regression cases for changed behavior and its edge cases.
+  SQLite is useful for portable behavior but does not prove PostgreSQL
+  integration; state that limitation when it matters.

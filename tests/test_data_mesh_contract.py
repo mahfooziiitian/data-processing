@@ -55,3 +55,28 @@ def test_validate_schema_flags_dtype_mismatch():
     violations = validate_schema(df, _CONTRACT)
 
     assert any("incompatible with declared kind 'int'" in v for v in violations)
+
+
+def test_validate_schema_rejects_non_date_object_values():
+    df = _valid_df()
+    df["signup_date"] = pd.Series(["not-a-date", pd.Timestamp("2024-01-02").date()], dtype=object)
+
+    violations = validate_schema(df, _CONTRACT)
+
+    assert any("incompatible with declared kind 'date'" in v for v in violations)
+
+
+def test_validate_schema_rejects_non_string_object_values():
+    df = _valid_df()
+    df["name"] = pd.Series(["Alice", 123], dtype=object)
+
+    violations = validate_schema(df, _CONTRACT)
+
+    assert any("incompatible with declared kind 'string'" in v for v in violations)
+
+
+def test_validate_schema_accepts_nullable_object_strings():
+    df = _valid_df()
+    df["name"] = pd.Series(["Alice", None], dtype=object)
+
+    assert validate_schema(df, _CONTRACT) == []

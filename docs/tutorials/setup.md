@@ -14,7 +14,7 @@ diataxis: tutorial
 ## 1. Start PostgreSQL
 
 ```bash
-docker compose up -d
+docker compose --project-directory . -f infra/docker-compose.yml up -d
 ```
 
 This starts a `postgres:16-alpine` container on `localhost:5432` with:
@@ -25,17 +25,19 @@ This starts a `postgres:16-alpine` container on `localhost:5432` with:
 The schema in `sql/schema.sql` is applied automatically on first
 container startup (via Postgres's `docker-entrypoint-initdb.d` mechanism).
 If you change the schema file after the container's data volume already
-exists, recreate the volume to re-apply it:
+exists, migrate the existing database to preserve its data. Alternatively,
+if the data can be discarded, recreate the volume to re-apply the schema.
+**This deletes the Compose database volume and the demo state volume:**
 
 ```bash
-docker compose down -v && docker compose up -d
+docker compose --project-directory . -f infra/docker-compose.yml down -v && docker compose --project-directory . -f infra/docker-compose.yml up -d
 ```
 
 Check the container is healthy:
 
 ```bash
-docker compose ps
-docker compose exec postgres pg_isready -U postgres
+docker compose --project-directory . -f infra/docker-compose.yml ps
+docker compose --project-directory . -f infra/docker-compose.yml exec postgres pg_isready -U postgres
 ```
 
 ## 2. Python environment
@@ -76,7 +78,7 @@ Expected log output ends with a summary like:
 ## 5. Verify the results
 
 ```bash
-docker compose exec postgres psql -U postgres -d data_processing_demo \
+docker compose --project-directory . -f infra/docker-compose.yml exec postgres psql -U postgres -d data_processing_demo \
   -c "SELECT name, country, order_count, total_spent FROM customer_order_summary ORDER BY total_spent DESC;"
 ```
 
@@ -100,14 +102,14 @@ uv run --group docs mkdocs build --strict  # static site -> site/
 
 | Symptom | Fix |
 |---|---|
-| `psycopg2.OperationalError: connection refused` | Ensure `docker compose up -d` has finished and the container is healthy (`docker compose ps`) |
-| Schema changes not reflected | Volumes persist data; run `docker compose down -v` to reset, then `up -d` again |
-| `ModuleNotFoundError: No module named 'src'` | Run commands via `uv run` from the repo root so `pythonpath = ["."]` in `pyproject.toml` (`[tool.pytest.ini_options]`) takes effect |
+| `psycopg2.OperationalError: connection refused` | Ensure `docker compose --project-directory . -f infra/docker-compose.yml up -d` has finished and the container is healthy (`docker compose --project-directory . -f infra/docker-compose.yml ps`) |
+| Schema changes not reflected | Migrate the database or, if its data can be discarded, recreate the volume as described above |
+| `ModuleNotFoundError: No module named 'data_proc'` | Run `uv sync --all-groups`, then use `uv run` so the editable `data_proc` package is available |
 | API enrichment step logs a warning | Expected when offline — `jsonplaceholder.typicode.com` is unreachable; the pipeline still completes with `company = NULL` |
 
 ## Tearing down
 
 ```bash
-docker compose down -v   # stop Postgres and remove its data volume
+docker compose --project-directory . -f infra/docker-compose.yml down -v   # remove the database and demo state volumes
 rm -rf .venv              # remove the uv-managed virtual environment, if desired
 ```

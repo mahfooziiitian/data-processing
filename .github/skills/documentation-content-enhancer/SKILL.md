@@ -1,6 +1,6 @@
 ---
 name: documentation-content-enhancer
-description: Enhances documentation under docs/ for clarity, completeness, structure, technical accuracy, and reader value while preserving the repository's Diataxis, MkDocs, naming, navigation, and diagram conventions. Use when asked to improve, enrich, rewrite, polish, or expand documentation content.
+description: Enhances documentation under docs/ for clarity, completeness, structure, technical accuracy, and reader value while preserving the repository's Diataxis, MkDocs, naming, navigation, and diagram conventions. Use when asked to improve, enrich, rewrite, polish, or expand documentation under docs/.
 allowed-tools: shell
 ---
 
@@ -15,6 +15,7 @@ understanding or ability to use the content.
 
 1. **Identify the target and audience**
    - Read the complete target page and nearby linked pages before editing.
+   - Inspect existing changes and preserve work outside the requested scope.
    - Determine whether the reader is learning, completing a task, looking up
      facts, or understanding design rationale.
    - Check the page's `diataxis:` frontmatter and folder against that purpose.
@@ -45,6 +46,8 @@ understanding or ability to use the content.
      exists; clearly label hypothetical or non-implemented examples.
    - Do not claim that code, infrastructure, integrations, or guarantees
      exist unless verified in the repository.
+   - Check runnable commands against the implementation and make destructive
+     reset steps explicit; never perform such steps without permission.
 
 4. **Improve readability**
    - Start with a concise framing paragraph that tells the reader what the
@@ -83,15 +86,15 @@ Before reporting completion:
 
 ```bash
 uv run --group docs mkdocs build --strict
-python3 .github/skills/diataxis-docs-audit/check_diataxis.py
+uv run python .github/skills/diataxis-docs-audit/check_diataxis.py
 git diff --check
 ```
 
-Treat Diátaxis warnings as advisory: inspect the page and fix real
-misclassification, but do not distort a valid explanation page merely to
-silence a heuristic warning. Run the focused project tests when documentation
-examples or repository behavior descriptions were changed. Remove `site/`
-after validation if the build created it, unless it is already ignored.
+The Diátaxis checker exits 1 when it reports warnings; treat those warnings
+as advisory, inspect the affected pages, and distinguish real issues from
+false positives. Run focused project tests when documentation examples or
+repository behavior descriptions were changed. Do not delete pre-existing
+build output or commit generated `site/` files.
 
 ## Enhancement checklist
 

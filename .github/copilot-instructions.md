@@ -3,6 +3,10 @@
 Python ETL proof-of-concept: CSV + REST API → pandas transform → PostgreSQL,
 used as a learning/demo reference for data engineering concepts.
 
+`AGENTS.md` is the shared entry point for Copilot and Codex agents. Keep it
+consistent with this file and the path-specific instructions under
+`.github/instructions/`.
+
 ## Commands
 
 All Python commands go through [uv](https://docs.astral.sh/uv/) — there is
@@ -10,8 +14,8 @@ no activated virtualenv convention; prefix with `uv run`.
 
 ```bash
 uv sync --all-groups          # install runtime + dev (pytest) + docs (mkdocs) deps
-docker compose up -d           # start local Postgres (auto-applies sql/schema.sql)
-uv run python examples/run_pipeline.py   # run the full ETL (batch/Lambda-style) pipeline
+docker compose --project-directory . -f infra/docker-compose.yml up -d           # start local Postgres (auto-applies sql/schema.sql)
+uv run python examples/run_pipeline.py   # run the batch ETL pipeline
 uv run python examples/run_kappa_stream.py --seed   # Kappa demo: seed sample events
 uv run python examples/run_kappa_stream.py          # Kappa demo: process new events
 uv run python examples/run_kappa_stream.py --replay # Kappa demo: reprocess the entire log
@@ -26,12 +30,16 @@ uv run --group docs mkdocs serve          # preview docs site at :8000 with live
 uv run --group docs mkdocs build --strict # build docs, fail on warnings
 ```
 
-Equivalent `make` targets exist: `setup`, `up`, `down`, `test`, `run`,
-`run-kappa`, `run-lambda`, `run-data-mesh`, `docs`, `docs-serve`, `clean`.
+Run `make help` for targets and overrides. Local and Docker targets support
+the demos; for example, `make run-kappa-docker ARGS=--seed`. `make clean-all`
+deletes both Compose volumes as well as local build artifacts.
 
 Tests do **not** require Docker/Postgres running — `tests/test_load.py` uses
 an in-memory SQLite engine, and `tests/test_extract.py` mocks the external
-API call via `unittest.mock.patch`.
+API call via `unittest.mock.patch`. Demo scripts that write tables still
+require a reachable database even when API enrichment is unavailable.
+Do not reset a database volume or delete local demo state without confirming
+that the data may be discarded.
 
 ## Architecture
 
@@ -69,9 +77,10 @@ they can be tested/swapped independently:
   unit-testable with small in-memory DataFrame fixtures.
 - **`load.py`** — generic `load_dataframe(df, table_name, engine)` over any
   SQLAlchemy engine; used with Postgres in the app and SQLite in tests.
-  Loads use `if_exists="replace"` to keep repeated pipeline runs idempotent
-  for demo purposes (not an upsert/merge — don't assume incremental-load
-  semantics elsewhere). `upsert_dataframe(df, table_name, key_column,
+  `load_dataframe()` defaults to `if_exists="replace"`; the batch pipeline
+  instead uses `refresh_tables()` to refresh related tables transactionally
+  while preserving their schema and foreign keys. Neither is incremental.
+  `upsert_dataframe(df, table_name, key_column,
   engine)` is the key-scoped idempotent alternative (delete-matching-keys
   then insert), used by the Kappa and Lambda demos below —
   dialect-agnostic, so don't add Postgres-specific `ON CONFLICT`/`MERGE`
@@ -91,14 +100,16 @@ Config (`src/data_proc/config.py`) is a single frozen `Settings` dataclass
 sourced from env vars (`DATABASE_URL`, `ENRICHMENT_API_URL`,
 `REQUEST_TIMEOUT_SECONDS`), instantiated once as the module-level `settings`
 singleton and imported from there — don't read `os.environ` directly in
-other modules.
+other modules. `DATA_PROC_HOME` defaults to the working directory; relative
+data-path overrides resolve against that home, while absolute overrides
+remain absolute. Existing environment variables take precedence over `.env`.
 
 `sql/schema.sql` is the source of truth for table DDL and is applied
 automatically by the Postgres container on first startup
 (`docker-entrypoint-initdb.d`). If you change table shape in
-`transform.py`/`load.py`, update `schema.sql` to match, and note that a
-schema change requires `docker compose down -v` (drops the volume) before
-`up -d` re-applies it.
+`transform.py`/`load.py`, update `schema.sql` to match. Existing volumes
+need a migration or recreation to apply schema changes; recreating a volume
+deletes its data and requires permission.
 
 Full architecture write-up and diagram: `docs/explanation/architecture.md`.
 Conceptual rationale for design choices: `docs/explanation/concepts.md`.
@@ -115,8 +126,9 @@ events incrementally (checkpointed) or all at once (replay from offset 0)
 converges on identical results — don't modify this module without
 confirming `tests/test_kappa_stream_transform.py`'s incremental-vs-replay
 test still passes. Writes use `etl.load.upsert_dataframe()` (key-scoped
-upsert) into `kappa_customer_order_summary`, a separate table from the
-batch pipeline's `customer_order_summary`.
+upsert with `remove_missing=True` for its complete summary) into
+`kappa_customer_order_summary`, a separate table from the batch pipeline's
+`customer_order_summary`.
 
 ### Lambda demo (`src/data_proc/lambda_arch/` + `examples/run_lambda_architecture.py`)
 
@@ -137,10 +149,16 @@ gap increment must equal a fresh batch recompute that already includes
 that gap — confirmed by
 `tests/test_lambda_serving_layer.py`'s
 `test_serving_result_matches_batch_layer_once_batch_absorbs_the_gap`.
+This invariant applies to the demo's supported events: the speed layer
+rejects cancellations of orders not created in the current gap, and batch
+recomputation rejects snapshot-order cancellations and repeated order IDs.
+Before serving, validate new IDs against the snapshot and covered log; batch
+recomputation includes customers present only in active events.
 Writes to `lambda_batch_view`/`lambda_speed_view` use
 `load_dataframe(..., if_exists="replace")` (each layer fully recomputes
 its own view every run); `lambda_serving_view` uses
-`upsert_dataframe()` instead.
+`upsert_dataframe()` with explicit retired event-customer keys instead,
+preserving unrelated keys.
 
 ### Data Mesh demo (`src/data_proc/data_mesh/` + `examples/run_data_mesh.py`)
 
@@ -202,5 +220,7 @@ for a Kafka topic.
   editing. Keep repository facts verified and label hypothetical platform
   examples clearly.
 - For documentation changes, run `uv run --group docs mkdocs build --strict`,
-  `python3 .github/skills/diataxis-docs-audit/check_diataxis.py`, and
-  `git diff --check`. Do not commit the generated `site/` directory.
+  `uv run python .github/skills/diataxis-docs-audit/check_diataxis.py`, and
+  `git diff --check`. The Diátaxis checker reports advisory warnings with a
+  nonzero exit; inspect them rather than treating every warning as a real
+  defect. Do not commit the generated `site/` directory.

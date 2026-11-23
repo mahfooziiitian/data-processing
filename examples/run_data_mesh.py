@@ -32,19 +32,22 @@ import pandas as pd
 
 from data_proc.config import settings
 from data_proc.data_mesh import catalog
-from data_proc.data_mesh.domains import customers_domain, orders_domain
 from data_proc.etl.load import get_engine, load_dataframe, read_dataframe
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 _CONSUMER_TABLE = "data_mesh_consumer_view"
+_CUSTOMERS_PRODUCT = "customers.customer_profile"
+_ORDERS_PRODUCT = "orders.order_summary"
 
 
 def publish_domains(engine) -> None:
     """Publish both domains' data products independently. Order doesn't
     matter — neither domain's `publish()` depends on the other having run,
     which is the point of decentralized ownership."""
+    from data_proc.data_mesh.domains import customers_domain, orders_domain
+
     customers_result = customers_domain.publish(engine, settings.data_mesh_catalog)
     logger.info("Published %s", customers_result)
     orders_result = orders_domain.publish(engine, settings.data_mesh_catalog)
@@ -72,12 +75,8 @@ def run_consumer(engine) -> pd.DataFrame:
     orders products via the catalog (not by importing their modules
     directly), read their published tables, and join them into a view this
     consumer owns — neither domain publishes this joined shape itself."""
-    customers_entry = catalog.get_product(
-        settings.data_mesh_catalog, customers_domain.CONTRACT.product_name
-    )
-    orders_entry = catalog.get_product(
-        settings.data_mesh_catalog, orders_domain.CONTRACT.product_name
-    )
+    customers_entry = catalog.get_product(settings.data_mesh_catalog, _CUSTOMERS_PRODUCT)
+    orders_entry = catalog.get_product(settings.data_mesh_catalog, _ORDERS_PRODUCT)
     if customers_entry is None or orders_entry is None:
         raise RuntimeError(
             "Both customers.customer_profile and orders.order_summary must "

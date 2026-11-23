@@ -19,14 +19,25 @@ orchestration) belongs in `examples/run_lambda_architecture.py`, not here.
 - `batch_layer.recompute_batch_view()` must stay a **full, stateless
   recompute** from the CSV snapshot + every event in the log from offset
   0 — never read or depend on the watermark/checkpoint inside it. It
-  returns the new watermark (the event count at the time it ran) for the
-  caller to persist; it must never persist the watermark itself.
+  returns the new watermark (the number of events actually read) for the
+  caller to persist; it must never persist the watermark itself or count
+  events appended after its read.
 - `speed_layer.compute_speed_increments()` only receives the already
   gap-filtered event list (events strictly after the watermark) — it must
   not read the event log, checkpoint, or watermark itself, and must not
   retain any state between calls (unlike `data_proc.kappa.state`, there is
   no persisted speed-layer state; each call recomputes the gap's
   increment from scratch, since the gap window is assumed small).
+- The speed layer rejects cancellations of orders not created in the gap;
+  it cannot subtract batch-covered orders without their original details.
+  Batch recomputation can incorporate cancellations of event-created orders,
+  but rejects snapshot-order cancellations and repeated order IDs. Preserve
+  these limits or change both paths and their tests and documentation.
+- Before serving, validate gap order IDs against the CSV snapshot and
+  already-covered log; the speed aggregation still receives only the gap.
+  Batch recomputation must retain customers present only in active events.
+  Keep snapshot customer profiles authoritative and use the latest active
+  event profile for event-only customers in both paths.
 - `serving_layer.merge_views()` must stay a pure outer-join merge with no
   I/O — it decides how to reconcile batch completeness with speed
   recency, not where the inputs come from.
@@ -40,5 +51,5 @@ orchestration) belongs in `examples/run_lambda_architecture.py`, not here.
 - Persist `lambda_batch_view`/`lambda_speed_view` with
   `data_proc.etl.load.load_dataframe(..., if_exists="replace")` (each is
   fully recomputed on every run of its layer); persist
-  `lambda_serving_view` with `upsert_dataframe()` instead, since it's
-  keyed and should preserve customers neither layer touched this run.
+  `lambda_serving_view` with `upsert_dataframe()` instead. Remove event-owned
+  customer keys no longer in the merged view while preserving unrelated keys.

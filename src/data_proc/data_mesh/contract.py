@@ -8,6 +8,7 @@ consumer validate a DataFrame against that description before trusting it,
 without needing to read that domain's build logic.
 """
 from dataclasses import dataclass, field
+from datetime import date
 
 import pandas as pd
 
@@ -18,8 +19,16 @@ import pandas as pd
 _KIND_CHECKS = {
     "int": pd.api.types.is_integer_dtype,
     "float": pd.api.types.is_float_dtype,
-    "string": lambda s: pd.api.types.is_object_dtype(s) or pd.api.types.is_string_dtype(s),
-    "date": lambda s: pd.api.types.is_object_dtype(s) or pd.api.types.is_datetime64_any_dtype(s),
+    "string": lambda s: pd.api.types.is_string_dtype(s.dtype)
+    and (
+        not pd.api.types.is_object_dtype(s.dtype)
+        or s.dropna().map(lambda value: isinstance(value, str)).all()
+    ),
+    "date": lambda s: pd.api.types.is_datetime64_any_dtype(s)
+    or (
+        pd.api.types.is_object_dtype(s)
+        and s.dropna().map(lambda value: isinstance(value, date)).all()
+    ),
 }
 
 

@@ -22,7 +22,10 @@ The pipeline (`examples/run_pipeline.py`) runs three stages:
 
 Continue to [Architecture](explanation/architecture.md) for a data-flow
 diagram, or [Concepts](explanation/concepts.md) for the data engineering
-ideas this demo illustrates.
+ideas this demo illustrates. See [Demo commands and state](reference/demos.md)
+for inputs, output tables, and persisted files.
+To run the demos without a local Python environment, see
+[Run demos in Docker](how-to/run-demos-in-docker.md).
 
 ### Kappa architecture demo
 
@@ -61,7 +64,7 @@ for the design rationale.
 
 ```bash
 # 1. Start PostgreSQL (applies sql/schema.sql automatically)
-docker compose up -d
+docker compose --project-directory . -f infra/docker-compose.yml up -d
 
 # 2. Install dependencies with uv
 uv sync
@@ -70,7 +73,7 @@ uv sync
 uv run python examples/run_pipeline.py
 
 # 4. Inspect the results
-docker compose exec postgres psql -U postgres -d data_processing_demo \
+docker compose --project-directory . -f infra/docker-compose.yml exec postgres psql -U postgres -d data_processing_demo \
   -c "SELECT * FROM customer_order_summary ORDER BY total_spent DESC;"
 ```
 
@@ -88,8 +91,8 @@ docker compose exec postgres psql -U postgres -d data_processing_demo \
 ├── examples/run_kappa_stream.py  Demo script: single stream path + replay
 ├── examples/run_lambda_architecture.py  Demo script: batch + speed + serving layers
 ├── examples/run_data_mesh.py     Demo script: publish two domains + self-serve consumer join
+├── infra/                        Compose services and demo container build
 ├── sql/schema.sql                PostgreSQL DDL, auto-applied by docker-compose
 ├── tests/                        pytest unit tests for each ETL/kappa/lambda/data_mesh module
-├── docker-compose.yml            Local PostgreSQL for the demo
 └── docs/                         This documentation site (MkDocs)
 ```

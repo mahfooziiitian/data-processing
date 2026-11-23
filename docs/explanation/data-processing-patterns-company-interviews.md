@@ -29,15 +29,14 @@ This page complements the other two pages in this series:
 
 ## How to use this page
 
-For each scenario, practice answering in three layers — that is what
-separates an architect-level answer from a framework-level answer:
+For each scenario, consider three aspects of the design.
 
-1. **The processing algorithm** — what computation is actually
+- **The processing algorithm** — what computation is actually
    happening (aggregation, join, windowing, dedup)?
-2. **Its distributed execution behavior** — how does the work get
+- **Its distributed execution behavior** — how does the work get
    partitioned, shuffled, and parallelized, and where are the likely
    bottlenecks?
-3. **Its failure and correctness guarantees** — what happens on retry,
+- **Its failure and correctness guarantees** — what happens on retry,
    late data, out-of-order events, or partial failure, and how do you
    prove the result is still correct?
 
@@ -105,12 +104,11 @@ windowing, and fault tolerance.
 **Q6.** Design a distributed algorithm to calculate the top 100 search
 queries from 100 billion records.
 
-1. Partition the input across workers.
-2. Calculate local query frequencies.
-3. Shuffle partial counts by query key.
-4. Aggregate global frequencies.
-5. Compute local top-K candidates and merge them into a global top 100.
-6. Define deterministic tie-breaking and account for hot keys.
+Workers first count queries within each input partition, then shuffle
+partial counts by query key and compute global frequencies. Each
+partition of those global frequencies can produce its local top 100
+for a final merge. The design needs deterministic tie-breaking and
+a strategy for hot keys.
 
 *Follow-up: how would the solution change if approximate answers were
 acceptable?*
@@ -754,13 +752,11 @@ streaming physical plan.
 
 *Production correctness strategy:*
 
-1. Maintain event-time aggregates with a two-hour watermark policy.
-2. Retain authoritative historical input for replay and corrections.
-3. Identify records arriving outside the streaming correction horizon.
-4. Recompute affected historical windows or apply controlled
-   corrections.
-5. Reconcile aggregate totals against authoritative transaction
-   totals.
+The streaming path maintains event-time aggregates with a two-hour
+watermark policy. Retained authoritative input supports a correction
+path for records outside that horizon. The correction path recomputes
+affected windows or applies controlled adjustments, then reconciles
+aggregate totals against authoritative transactions.
 
 **Trade-off:** longer watermark delays increase the time for which
 state may need to be retained; shorter delays reduce state pressure
@@ -1173,38 +1169,9 @@ historical correction rather than raw scale. As with Part 4, these are
 **illustrative, company-styled practice scenarios**, not verified or
 leaked questions from any company's actual interview process.
 
-The lab setup below targets PySpark with Spark 4.x-style DataFrame
-APIs and standard Spark SQL. A few exercises reference Delta Lake,
-which requires a compatible Delta-enabled Spark runtime. Streaming
-examples avoid `MemoryStream`-style test harnesses so the batch
-reference calculations can be run and checked with ordinary files and
-Spark Structured Streaming.
-
-### Lab setup
-
-```python
-from pyspark.sql import SparkSession, functions as F
-from pyspark.sql.window import Window
-from pyspark.sql.types import (
-    StructType, StructField, StringType,
-    IntegerType, LongType, DoubleType,
-    TimestampType,
-)
-
-spark = (
-    SparkSession.builder
-    .appName("Walmart-Principal-DE-Round2")
-    .master("local[4]")
-    .config("spark.sql.shuffle.partitions", "4")
-    .config("spark.sql.session.timeZone", "UTC")
-    .getOrCreate()
-)
-spark.sparkContext.setLogLevel("WARN")
-```
-
-For production, replace local execution with a properly sized
-distributed cluster and validate the execution plan against your
-runtime.
+The [Spark lab setup](../how-to/setup-spark-interview-lab.md) initializes
+the local session used by the batch reference calculations. The streaming
+examples use file inputs and Spark Structured Streaming.
 
 ### Interview overview
 
@@ -1525,10 +1492,10 @@ watermark: watermark progression is based on event-time observations
 across the relevant streaming inputs, not on the minimum timestamp of
 every individual store. I would distinguish three potential problems:
 
-1. Watermark progression is stalled.
-2. Watermark progression is healthy, but state cardinality is
+- Watermark progression is stalled.
+- Watermark progression is healthy, but state cardinality is
    increasing.
-3. The aggregation has no effective state-expiration condition.
+- The aggregation has no effective state-expiration condition.
 
 *Step 1: inspect streaming progress.*
 
@@ -2234,12 +2201,12 @@ GROUP BY order_id;
 accurate and each transition is applied exactly once. In real systems,
 duplicate or out-of-order deltas can corrupt aggregates. A more robust
 design stores the latest accepted version and contribution for each
-order. For an incoming complete replacement event:
+order.
 
-1. Compare its version with the persisted version.
-2. Reject stale or duplicate versions.
-3. Compute the difference between new and stored contributions.
-4. Atomically update both the order state and aggregate contribution.
+When a complete replacement event arrives, the persisted version
+determines whether it is stale or a duplicate. For an accepted version, the change in the aggregate is
+the difference between the new and stored contributions. The order
+state and aggregate contribution are updated atomically.
 
 If an order changes its grouping dimensions, such as store or business
 date, the old group must receive a negative adjustment and the new
@@ -2651,12 +2618,12 @@ a Spark operation, but why its result remains correct under
 duplication, disorder, retries, state expiration, and historical
 replay. The strongest answers connect four layers:
 
-1. **Business invariant** — what result must always remain correct?
-2. **Processing algorithm** — how are changes, windows, and state
+- **Business invariant** — what result must always remain correct?
+- **Processing algorithm** — how are changes, windows, and state
    computed?
-3. **Distributed execution** — what shuffles, state stores, and
+- **Distributed execution** — what shuffles, state stores, and
    bottlenecks arise?
-4. **Failure boundary** — what happens if the process crashes
+- **Failure boundary** — what happens if the process crashes
    immediately before or after a commit?
 
 **Self-assessment scorecard.** Rate your confidence from 1 (basic) to

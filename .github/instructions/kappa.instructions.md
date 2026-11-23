@@ -18,11 +18,14 @@ ordinary incremental run or a full replay from offset zero. Usage code
   converge on the same result as incrementally folding new events onto
   prior state. This is the property that makes replay correct — don't
   introduce hidden state, randomness, or current-time dependence into it.
+  Preserve event recency in the state order so a customer's latest active
+  order event supplies its profile in both incremental runs and replay.
 - `event_log.py` offsets are 1-based line counts into
   `data/processed/kappa_events.jsonl`; `read_events(log_path, from_offset)`
   must keep returning everything strictly after that offset so a consumer
   can resume exactly where it left off, and `from_offset=0` must replay
-  the entire log.
+  the entire log. Advance a checkpoint only by the number of events
+  actually read, not a later count of the potentially growing log.
 - `checkpoint.py`/`state.py` persist plain JSON — keep event/state payloads
   JSON-serializable (str/int/float/bool/None; no pandas Timestamps or
   other non-JSON types) so round-tripping through these modules doesn't
@@ -34,5 +37,10 @@ ordinary incremental run or a full replay from offset zero. Usage code
   together, and add/adjust a test in `tests/test_kappa_stream_transform.py`
   asserting incremental-vs-replay convergence still holds.
 - Persist writes via `data_proc.etl.load.upsert_dataframe()` (key-scoped
-  delete+insert), not `load_dataframe(..., if_exists="replace")` — a full
-  replace would wipe customers that a given incremental run doesn't touch.
+  delete+insert), not `load_dataframe(..., if_exists="replace")`. The demo
+  supplies its complete summary with `remove_missing=True` so cancelled
+  customers and stale replay results are removed as well.
+- The file-backed log, checkpoint, and state are demo stand-ins, not a
+  transactional broker or a guarantee of safe concurrent writers. Do not
+  claim production-grade delivery or recovery semantics without implementing
+  and testing them.

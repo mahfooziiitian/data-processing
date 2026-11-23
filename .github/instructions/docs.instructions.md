@@ -57,17 +57,20 @@ applyTo: "docs/**/*.md,mkdocs.yml"
   from Markdown with relative paths, e.g.
   `![alt](../assets/images/foo.png)`). Don't put assets directly under
   `docs/` or inside a quadrant folder.
-- Validate changes with `uv run --group docs mkdocs build --strict` (fails
-  the build on broken links/nav entries) before considering a docs change
-  complete; also run `git diff --check` and the Diátaxis audit for content
-  changes. Preview with `uv run --group docs mkdocs serve`.
+- Validate changes with `uv run --group docs mkdocs build --strict` before
+  considering a docs change complete; also run `git diff --check` and the
+  Diátaxis audit for content changes. Strict mode fails on MkDocs warnings,
+  but does not guarantee every link or anchor has been checked. Treat
+  Diátaxis warnings as advisory and inspect them. Preview with
+  `uv run --group docs mkdocs serve`.
 - **Content quality**: use descriptive headings, short paragraphs, Markdown
   tables for genuinely tabular material, fenced code blocks with a language
   identifier, and relative links between related pages. Keep explanation
   pages focused on rationale/trade-offs; put task procedures in `how-to/`
   or `tutorials/`, and stable lookup material in `reference/`.
 - **Generated/build output**: do not commit the `site/` directory or other
-  MkDocs build artifacts. Remove local build output before staging changes.
+  MkDocs build artifacts. Preserve any pre-existing local output rather
+  than deleting it without checking ownership and scope.
 - Keep `docs/index.md` (site home) and the root `README.md` roughly in
   sync for the quickstart section — `README.md` is GitHub-facing,
   `docs/index.md` is site-facing, and both should reflect the same

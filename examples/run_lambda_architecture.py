@@ -92,15 +92,29 @@ def run_speed_and_serve() -> dict:
     """Run the speed layer over events since the watermark, then merge
     the current batch view with that increment via the serving layer."""
     from_offset = watermark.read_watermark(settings.lambda_watermark)
-    new_events = event_log.read_events(settings.lambda_event_log, from_offset=from_offset)
+    events = event_log.read_events(settings.lambda_event_log, from_offset=0)
+    new_events = events[from_offset:]
+    covered_ids = set(pd.read_csv(settings.orders_csv, usecols=["order_id"])["order_id"])
+    covered_ids.update(
+        event["order_id"] for event in events[:from_offset]
+        if event["event_type"] == "order_created"
+    )
+    speed_layer.validate_gap_order_ids(new_events, covered_ids)
     speed_df = speed_layer.compute_speed_increments(new_events)
 
     engine = get_engine()
     load_dataframe(speed_df, "lambda_speed_view", engine)
 
     batch_df = read_dataframe("lambda_batch_view", engine)
-    served = serving_layer.merge_views(batch_df, speed_df)
-    rows_served = upsert_dataframe(served, "lambda_serving_view", "customer_id", engine)
+    snapshot_ids = set(pd.read_csv(settings.customers_csv, usecols=["customer_id"])["customer_id"])
+    served = serving_layer.merge_views(batch_df, speed_df, snapshot_customer_ids=snapshot_ids)
+    event_customer_ids = {
+        event["customer_id"] for event in events if event["event_type"] == "order_created"
+    }
+    retired_ids = event_customer_ids - set(served["customer_id"])
+    rows_served = upsert_dataframe(
+        served, "lambda_serving_view", "customer_id", engine, remove_keys=list(retired_ids)
+    )
 
     logger.info(
         "Speed layer processed %s event(s) since watermark %s; "

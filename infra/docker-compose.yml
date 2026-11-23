@@ -18,5 +18,26 @@ services:
       timeout: 5s
       retries: 10
 
+  app:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    environment:
+      DATABASE_URL: "${CONTAINER_DATABASE_URL:-postgresql+psycopg2://postgres:postgres@postgres:5432/data_processing_demo}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - demo_state:/app/data/processed
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   pg_data:
+  demo_state:

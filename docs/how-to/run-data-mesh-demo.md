@@ -17,9 +17,12 @@ for the design rationale.
 - PostgreSQL running with the current schema applied:
 
   ```bash
-  docker compose down -v   # only needed if you've run an older schema before
-  docker compose up -d --wait
+  docker compose --project-directory . -f infra/docker-compose.yml up -d --wait
   ```
+
+For an existing volume with an outdated schema, migrate the schema or,
+only if you can discard its data, follow the reset guidance in the
+[Setup Guide](../tutorials/setup.md).
 
 ## 1. Publish both domains and run the consumer
 
@@ -58,7 +61,7 @@ Each domain owns and writes only its own table — confirm neither contains
 the other's fields:
 
 ```bash
-docker compose exec postgres psql -U postgres -d data_processing_demo \
+docker compose --project-directory . -f infra/docker-compose.yml exec postgres psql -U postgres -d data_processing_demo \
   -c "\d data_mesh_customers_product" \
   -c "\d data_mesh_orders_product"
 ```
@@ -71,7 +74,7 @@ boundary is enforced by each domain's contract, not by convention — see
 ## 3. Inspect the consumer's joined view
 
 ```bash
-docker compose exec postgres psql -U postgres -d data_processing_demo \
+docker compose --project-directory . -f infra/docker-compose.yml exec postgres psql -U postgres -d data_processing_demo \
   -c "SELECT * FROM data_mesh_consumer_view ORDER BY total_spent DESC LIMIT 5;"
 ```
 
@@ -97,7 +100,8 @@ or orders domain teams.
 - The two domains' `publish()` calls in `examples/run_data_mesh.py` can
   run in either order (or on entirely separate schedules in a real
   system) — there's no shared state between them besides the catalog.
-- Try breaking governance on purpose: edit `CONTRACT.owner = ""` in
+- Try breaking governance on purpose: change the `owner` argument to `""`
+  in the `DataContract(...)` constructor in
   `src/data_proc/data_mesh/domains/customers_domain.py` and re-run — the
   domain's own `publish()` call raises `ValueError` before writing
   anything, since `governance.check_global_policies()` rejects an empty

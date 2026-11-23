@@ -29,13 +29,10 @@ def run() -> dict:
     summary = transform.build_customer_order_summary(customers, orders)
 
     engine = load.get_engine()
-    rows_loaded = {
-        "customers": load.load_dataframe(customers, "customers", engine),
-        "orders": load.load_dataframe(orders, "orders", engine),
-        "customer_order_summary": load.load_dataframe(
-            summary, "customer_order_summary", engine
-        ),
-    }
+    rows_loaded = load.refresh_tables(
+        {"customers": customers, "orders": orders, "customer_order_summary": summary},
+        engine,
+    )
 
     logger.info("Pipeline complete: %s", rows_loaded)
     return rows_loaded

@@ -95,7 +95,7 @@ management.
 
 ```bash
 # 1. Start PostgreSQL (applies sql/schema.sql automatically)
-docker compose up -d
+docker compose --project-directory . -f infra/docker-compose.yml up -d
 
 # 2. Install dependencies (creates .venv automatically)
 uv sync --all-groups
@@ -104,23 +104,33 @@ uv sync --all-groups
 uv run python examples/run_pipeline.py
 
 # 4. Inspect the results
-docker compose exec postgres psql -U postgres -d data_processing_demo \
+docker compose --project-directory . -f infra/docker-compose.yml exec postgres psql -U postgres -d data_processing_demo \
   -c "SELECT * FROM customer_order_summary ORDER BY total_spent DESC;"
 ```
 
 Or, with `make`:
 
 ```bash
-make setup   # uv sync (installs runtime, dev, and docs dependencies)
-make up      # start postgres
-make run     # run the pipeline
-make test    # run the test suite
-make docs    # build the documentation site (docs/ -> site/)
-make down    # stop postgres
+make install-deps    # install runtime, dev, and docs dependencies
+make start-services  # start postgres
+make run-etl         # run the pipeline
+make test            # run the test suite
+make build-docs      # build the documentation site (docs/ -> site/)
+make stop-services   # stop postgres
+make help            # list all targets and overrides
 ```
+
+For Docker-based runs, use `make build-image` and `make run-etl-docker`.
+Pass demo options with `ARGS`, for example `make run-kappa-docker ARGS=--seed`.
+`make clean-all` (also available as `make clean`) deletes the database and
+demo-state volumes as well as local build artifacts; use it only if those
+data can be discarded. The previous target names remain available as aliases.
 
 Full setup instructions, including troubleshooting, are in
 [`docs/tutorials/setup.md`](docs/tutorials/setup.md).
+
+To run the scripts inside Docker instead of installing Python locally, see
+[`docs/how-to/run-demos-in-docker.md`](docs/how-to/run-demos-in-docker.md).
 
 ## Documentation site
 
@@ -128,12 +138,12 @@ The contents of `docs/` are also published as a browsable
 [MkDocs](https://www.mkdocs.org/) site (Material theme). Preview it locally:
 
 ```bash
-make docs-serve   # serves http://127.0.0.1:8000 with live reload
+make serve-docs   # serves http://127.0.0.1:8000 with live reload
 ```
 
 ## Repository layout
 
-```
+```text
 .
 ├── data/raw/                     Sample input CSVs (customers, orders)
 ├── data/processed/               Reserved for pipeline/stream output artifacts (gitignored)
@@ -146,9 +156,9 @@ make docs-serve   # serves http://127.0.0.1:8000 with live reload
 ├── examples/run_kappa_stream.py  Demo script: single stream path + replay
 ├── examples/run_lambda_architecture.py  Demo script: batch + speed + serving layers
 ├── examples/run_data_mesh.py     Demo script: publish two domains + self-serve consumer join
+├── infra/                        Compose services and demo container build
 ├── sql/schema.sql                PostgreSQL DDL, auto-applied by docker-compose
 ├── tests/                        pytest unit tests for each ETL/kappa/lambda/data_mesh module
-├── docker-compose.yml            Local PostgreSQL for the demo
 ├── docs/                         Architecture, concepts, and setup docs (MkDocs site)
 ├── mkdocs.yml                    MkDocs site configuration
 └── pyproject.toml                uv-managed project metadata and dependencies

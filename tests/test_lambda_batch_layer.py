@@ -1,5 +1,6 @@
 """Tests for the batch layer: full recompute from CSVs + the event log."""
 import pandas as pd
+import pytest
 
 from data_proc.kappa import event_log
 from data_proc.lambda_arch import batch_layer
@@ -80,3 +81,34 @@ def test_recompute_batch_view_excludes_cancelled_event_orders(tmp_path):
     row = summary[summary["customer_id"] == 1].iloc[0]
     assert row["order_count"] == 2
     assert row["total_spent"] == 30.0
+
+
+def test_watermark_only_covers_events_read_even_if_log_grows(tmp_path, monkeypatch):
+    customers_csv, orders_csv = _write_csvs(tmp_path)
+    log_path = tmp_path / "events.jsonl"
+    event = {
+        "event_type": "order_created", "order_id": 201, "customer_id": 1,
+        "quantity": 1, "unit_price": 50.0, "order_date": "2024-02-01",
+    }
+    read_events = event_log.read_events
+
+    def read_then_append(path, from_offset=0):
+        snapshot = read_events(path, from_offset)
+        event_log.append_event(path, event)
+        return snapshot
+
+    monkeypatch.setattr(event_log, "read_events", read_then_append)
+    summary, offset = batch_layer.recompute_batch_view(customers_csv, orders_csv, log_path)
+
+    assert offset == 0
+    assert summary.loc[summary["customer_id"] == 1, "order_count"].iloc[0] == 2
+    assert len(read_events(log_path, offset)) == 1
+
+
+def test_batch_rejects_cancellation_of_snapshot_order(tmp_path):
+    customers_csv, orders_csv = _write_csvs(tmp_path)
+    log_path = tmp_path / "events.jsonl"
+    event_log.append_event(log_path, {"event_type": "order_cancelled", "order_id": 101})
+
+    with pytest.raises(ValueError, match="snapshot order"):
+        batch_layer.recompute_batch_view(customers_csv, orders_csv, log_path)

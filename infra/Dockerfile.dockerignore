@@ -1,0 +1,15 @@
+**
+!infra/
+!infra/Dockerfile
+!infra/Dockerfile.dockerignore
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!src/**/
+!src/**/*.py
+!examples/
+!examples/*.py
+!data/
+!data/raw/
+!data/raw/*.csv

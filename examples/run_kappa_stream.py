@@ -95,11 +95,12 @@ def process() -> dict:
 
     engine = get_engine()
     rows_upserted = upsert_dataframe(
-        summary, "kappa_customer_order_summary", "customer_id", engine
+        summary, "kappa_customer_order_summary", "customer_id", engine,
+        remove_missing=True,
     )
 
     state_store.write_state(settings.kappa_state_path, updated_state)
-    new_offset = event_log.count_events(settings.kappa_event_log)
+    new_offset = from_offset + len(new_events)
     checkpoint.write_checkpoint(settings.kappa_checkpoint, new_offset)
 
     logger.info(

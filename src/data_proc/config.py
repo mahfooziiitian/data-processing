@@ -46,7 +46,8 @@ def _path_setting(env_var: str, *default_parts: str) -> Path:
     """Resolve a path setting from ``env_var``, or default relative to the data home."""
     override = os.getenv(env_var)
     if override:
-        return Path(override).resolve()
+        path = Path(override)
+        return (path if path.is_absolute() else _data_home() / path).resolve()
     return _data_home().joinpath(*default_parts)
 
 

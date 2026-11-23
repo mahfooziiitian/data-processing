@@ -83,3 +83,22 @@ def test_incremental_folding_matches_full_replay():
     replay_summary = stream_transform.build_customer_order_summary(replay_state)
 
     assert incremental_summary.equals(replay_summary)
+
+
+def test_updated_order_supplies_latest_customer_profile_on_incremental_and_replay():
+    first = {**_order_event(1), "name": "Old"}
+    second = {**_order_event(2), "name": "Middle"}
+    update = {**_order_event(1), "name": "Latest"}
+    events = [first, second, update]
+
+    incremental = stream_transform.fold_order_events(events[:2])
+    incremental = stream_transform.fold_order_events(events[2:], incremental)
+    replay = stream_transform.fold_order_events(events)
+
+    assert stream_transform.build_customer_order_summary(incremental).iloc[0]["name"] == "Latest"
+    assert stream_transform.build_customer_order_summary(incremental).equals(
+        stream_transform.build_customer_order_summary(replay)
+    )
+    assert stream_transform.build_customer_order_summary(
+        stream_transform.fold_order_events(events, replay)
+    ).equals(stream_transform.build_customer_order_summary(replay))

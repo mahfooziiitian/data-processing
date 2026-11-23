@@ -14,16 +14,14 @@ show *how* to use the `data_proc` library; they are not part of it.
   If a script needs new reusable logic, add it to the library and import
   it here instead of inlining it.
 - Keep each script runnable standalone with `uv run python
-  examples/<script>.py` (no package/`__init__.py` required) and runnable
-  fully offline where the library already supports it (e.g.
-  `run_pipeline.py` still completes without network/Postgres access,
-  because `extract.py`'s enrichment call fails soft).
+  examples/<script>.py` (no package/`__init__.py` required). Preserve
+  fail-soft API enrichment so the ETL demo can run without internet; it
+  still requires a reachable database.
 - A script's docstring should state what it demonstrates and how to run
   it, so it's usable as a copy-paste starting point.
-- These files are not covered by `tests/`'s unit-test conventions — they
-  are demonstrations, not library code requiring full test coverage. If a
-  script accumulates real business logic worth unit-testing, move that
-  logic into `src/data_proc/` and add tests there instead.
+- Test consequential orchestration behavior with isolated files and an
+  in-memory database or mocks, especially checkpointing and write order.
+  Move reusable business logic into `src/data_proc/` and test it there.
 - Don't add new runtime dependencies solely for an example without
   confirming it's worth adding to `[project.dependencies]` — examples
   should stay runnable with the same environment as the rest of the repo.

@@ -124,9 +124,10 @@ from being interactive or rendered from real data.
   Spark DataFrame reader without touching `transform.py`).
 - **Resilient API extraction**: the enrichment API call fails soft (logs a
   warning, returns an empty DataFrame) so the demo still runs fully offline.
-- **`if_exists="replace"` loads** make the pipeline idempotent and safe to
-  re-run repeatedly for demo purposes; a production pipeline would use
-  incremental/upsert loads instead (see `docs/explanation/concepts.md`).
+- **Transactional full refreshes** delete dependent rows first and insert
+  parents first, preserving the initialized schema and its foreign keys.
+  Re-running the batch pipeline produces the same data; production systems
+  may instead use incremental/upsert loads.
 - **Docker Compose for Postgres only** — the Python pipeline runs on the
   host (or in CI) so it's trivial to step through with a debugger.
 
@@ -162,8 +163,8 @@ CSV snapshot on every run (Lambda-style), the Kappa demo instead:
    trait of Kappa versus Lambda.
 4. Writes results with `upsert_dataframe()` (`src/data_proc/etl/load.py`)
    into `kappa_customer_order_summary` (`sql/schema.sql`) — an idempotent,
-   key-scoped upsert rather than a full-table `replace`, since only a
-   subset of customers typically changes per incremental run.
+   key-scoped upsert with removal of keys absent from the complete derived
+   summary, including customers whose last order was cancelled.
 
 ```mermaid
 flowchart LR
@@ -205,7 +206,12 @@ processing paths, merged at query time:
    narrow: aggregates only the events strictly after the watermark (the
    "gap"), written to `lambda_speed_view`. It recomputes this small
    window from scratch on every run rather than maintaining persisted
-   state, since the gap is assumed small.
+   state, since the gap is assumed small. Cancellation is supported only
+   for orders created within that same gap; a cancellation of a
+   batch-covered order is rejected because the speed layer lacks its details.
+   Before serving, the demo checks new IDs against the CSV and covered log;
+   this validation scans history even though the aggregation only covers
+   the gap.
 - **Serving layer** (`serving_layer.merge_views()`) — the query-time
    merge: outer-joins the batch and speed views by `customer_id`, summing
    counts/spend and taking the max order date, so a consumer querying
@@ -245,6 +251,15 @@ already included) would produce — see
 `test_serving_result_matches_batch_layer_once_batch_absorbs_the_gap`, and
 `docs/how-to/run-lambda-demo.md` for a hands-on walkthrough (batch → seed
 gap events → speed+serve → batch again, watching the gap close).
+This applies to the demo's supported events: unique new order IDs and
+cancellations of orders created in the same gap. The batch recompute can
+absorb a later cancellation of an event-created order, but the speed layer
+cannot represent that correction before the next batch run. Snapshot-order
+cancellations and repeated order IDs are not supported. Customers present
+only in active order events are included in batch results using their
+latest active event profile; CSV customer profiles remain authoritative.
+The serving update removes retired event-customer keys while retaining
+unrelated keys.
 
 ## Data Mesh architecture demo
 
@@ -278,6 +293,11 @@ maps its four commonly cited principles onto two independent domains:
   before writing anything. Governance is global in *definition*, federated
   in *enforcement* — there is no central gatekeeper service a domain must
   ask permission from.
+
+The freshness SLA is declared and checked for a positive value, not
+monitored against publication times. The demo does not enforce privacy or
+access-control policies; those require additional infrastructure. See
+[Operating and evolving pipelines](operating-and-evolving.md).
 
 ```mermaid
 flowchart TB

@@ -25,19 +25,29 @@ _SUMMARY_COLUMNS = [
 ]
 
 
-def _events_to_orders_frame(events: list[dict]) -> pd.DataFrame:
+def _events_to_orders_frame(events: list[dict], snapshot_order_ids: set) -> pd.DataFrame:
     """Reduce event-sourced order_created/order_cancelled events to the
     current set of non-cancelled orders, shaped like the CSV orders."""
-    cancelled_ids = {e["order_id"] for e in events if e["event_type"] == "order_cancelled"}
-    rows = [
-        e for e in events
-        if e["event_type"] == "order_created" and e["order_id"] not in cancelled_ids
-    ]
-    if not rows:
-        return pd.DataFrame(
-            columns=["order_id", "customer_id", "quantity", "unit_price", "order_date"]
-        )
-    return pd.DataFrame(rows)[["order_id", "customer_id", "quantity", "unit_price", "order_date"]]
+    active = {}
+    seen = set(snapshot_order_ids)
+    for event in events:
+        order_id = event["order_id"]
+        if event["event_type"] == "order_created":
+            if order_id in seen:
+                raise ValueError(f"Repeated order creation: {order_id}")
+            seen.add(order_id)
+            active[order_id] = event
+        elif event["event_type"] == "order_cancelled":
+            if order_id not in active:
+                raise ValueError(f"Cannot cancel unknown or snapshot order: {order_id}")
+            del active[order_id]
+        else:
+            raise ValueError(f"Unsupported order event: {event['event_type']}")
+    rows = list(active.values())
+    return pd.DataFrame(rows).reindex(columns=[
+        "order_id", "customer_id", "quantity", "unit_price", "order_date",
+        "name", "email", "country",
+    ])
 
 
 def recompute_batch_view(
@@ -56,7 +66,11 @@ def recompute_batch_view(
     ]
 
     all_events = event_log.read_events(event_log_path, from_offset=0)
-    event_orders = _events_to_orders_frame(all_events)
+    event_orders = _events_to_orders_frame(all_events, set(orders["order_id"]))
+    event_customers = event_orders[["customer_id", "name", "email", "country"]]
+    event_customers = event_customers.drop_duplicates("customer_id", keep="last")
+    event_customers = event_customers[~event_customers["customer_id"].isin(customers["customer_id"])]
+    customers = pd.concat([customers, event_customers], ignore_index=True)
     combined_orders = pd.concat([orders, event_orders], ignore_index=True)
     combined_orders["line_total"] = combined_orders["quantity"] * combined_orders["unit_price"]
 
@@ -73,5 +87,5 @@ def recompute_batch_view(
     result["order_count"] = result["order_count"].fillna(0).astype(int)
     result["total_spent"] = result["total_spent"].fillna(0.0).round(2)
 
-    watermark_offset = event_log.count_events(event_log_path)
+    watermark_offset = len(all_events)
     return result[_SUMMARY_COLUMNS], watermark_offset

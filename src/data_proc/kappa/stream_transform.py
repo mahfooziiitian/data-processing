@@ -41,6 +41,7 @@ def fold_order_events(
         if event["event_type"] == "order_cancelled":
             state.pop(order_id, None)
             continue
+        state.pop(order_id, None)
         state[order_id] = event
     return state
 

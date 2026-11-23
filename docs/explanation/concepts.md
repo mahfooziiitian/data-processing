@@ -99,12 +99,12 @@ micro-batch, incremental, stateful, and window-based — all five labels
 describe one job from different angles.
 
 **Where this demo sits**, read across the same axes: it's **batch** (full
-CSV read each run) + **full refresh** (`if_exists="replace"`, see
+CSV read each run) + **full refresh** (transactional row replacement, see
 "Idempotent loads") + **stateless** at the per-row transform step
 (`clean_customers`, `clean_orders`) + a **stateful** aggregation only at
 the very end (`build_customer_order_summary`'s `groupby`) + single-process
 (no parallel/distributed/MPP execution — `pandas`, not Spark). Swapping
-`pandas` for PySpark (see "Where to go from here") would add the
+`pandas` for PySpark would add the
 parallel/distributed/MPP axis without changing any of the others.
 
 For a deeper treatment of these patterns — code-level comparisons,
@@ -271,7 +271,7 @@ The four pillars of data mesh (Dehghani's formulation):
   `catalog.py` is this platform's discovery piece: a consumer finds a
   domain's product via `catalog.get_product()` without ever importing
   that domain's module (see `examples/run_data_mesh.py`'s consumer step).
-  `docker-compose.yml`, `pyproject.toml`'s dependency groups, and the
+  `infra/docker-compose.yml`, `pyproject.toml`'s dependency groups, and the
   pytest/MkDocs tooling in this repo are the same idea at the whole-repo
   level — reusable platform primitives every demo shares.
 - **Federated computational governance** — global rules (schema
@@ -279,9 +279,9 @@ The four pillars of data mesh (Dehghani's formulation):
   standards) are agreed on centrally and enforced automatically, but
   applied by each domain to its own data — governance is federated, not
   the data itself centralized. The demo's `governance.check_global_policies()`
-  defines these rules once; each domain's own `publish()` function calls
-  it on itself before writing anything, rather than a central gatekeeper
-  service reviewing every release.
+  checks a small subset of metadata rules, not privacy or access control;
+  each domain's own `publish()` function calls it before writing anything,
+  rather than a central gatekeeper service reviewing every release.
 
 See
 [Architecture → Data Mesh architecture demo](architecture.md#data-mesh-architecture-demo)
@@ -449,10 +449,11 @@ summary tables in a warehouse.
 
 ## 11. Idempotent loads
 
-Using `if_exists="replace"` makes repeated pipeline runs produce the same
-end state, a simple way to achieve idempotency for a demo. Production
+Refreshing rows transactionally while retaining the schema makes repeated
+pipeline runs produce the same end state, a simple way to achieve
+idempotency for a demo. Production
 systems typically use `MERGE`/`UPSERT`, partition overwrites, or slowly
-changing dimension (SCD) strategies instead — see "Where to go from here."
+changing dimension (SCD) strategies instead.
 
 ## 12. Separation of concerns / testability
 
@@ -469,19 +470,48 @@ flow through a single `Settings` object (`src/data_proc/config.py`) sourced from
 environment variables — never hardcoded in business logic — so the same
 code runs unchanged across local, CI, and production environments.
 
-## Where to go from here
+## What the demos cover
 
-| Concept | How to explore it in this repo |
+| Topic | Where to explore it |
 | --- | --- |
-| Orchestration | Wrap `pipeline.run()` in an Airflow DAG or Dagster job |
-| Incremental loads | Replace `if_exists="replace"` with an upsert via `ON CONFLICT` |
-| Data quality gates | Add Great Expectations/Pandera checks between transform and load |
-| Micro-batching | Add a watermark column and loop `pipeline.run()` on a short interval, processing only new/changed rows (see "Data processing patterns") |
-| Streaming | Replace the CSV extractor with a Kafka consumer and stateful windowed aggregation (see "Data processing patterns") |
-| Lambda architecture | Add a speed-layer job computing a delta table since the last batch run, and a merge view combining it with `customer_order_summary` (see "Lambda architecture") |
-| Kappa architecture | Replace the CSV extractor with an immutable log (e.g., Kafka), and recompute history by replaying it through the same stream job instead of running a separate batch pipeline (see "Kappa architecture") |
-| Data mesh | Treat `customer_order_summary` as a versioned, documented "data product" owned by a domain team, built on shared platform tooling (this repo's `docker-compose.yml`/`pyproject.toml`) rather than a one-off pipeline (see "Data mesh") |
-| Medallion architecture | Rename/organize `data/raw/` as Bronze, `transform.py`'s cleaned DataFrames as Silver, and `customer_order_summary` as Gold — the shape already matches, only the labels are missing (see "Putting it together") |
-| CDC (Change Data Capture) | Point a tool like Debezium at the demo Postgres container's write-ahead log and feed row-level change events into the pipeline instead of re-reading `customers`/`orders` wholesale each run (see "Putting it together") |
-| Scale | Swap pandas for PySpark DataFrames; the function signatures stay similar |
-| Observability | Add structured logging/metrics around each pipeline stage |
+| Batch ETL and transactional refresh | [Run the first pipeline](../tutorials/setup.md) |
+| Incremental events, state, and replay | [Run the Kappa demo](../how-to/run-kappa-demo.md) and [retry an interrupted run](../tutorials/kappa-recovery.md) |
+| Batch and speed-layer reconciliation | [Run the Lambda demo](../how-to/run-lambda-demo.md) |
+| Data contracts, governance, and discovery | [Run the Data Mesh demo](../how-to/run-data-mesh-demo.md) |
+| Event-time windows and late arrivals | [Work through a local fixture](../tutorials/event-time-windows.md) |
+| Versioned incremental changes and replay | [Apply an illustrative change feed](../tutorials/incremental-changes.md) |
+| Rejection and reconciliation | [Quarantine invalid orders](../tutorials/quarantine-orders.md) |
+| Contract evolution and consumer compatibility | [Evolve a data contract](../tutorials/evolve-data-contract.md) |
+| Scheduling and alerts | [Monitor simulated runs](../tutorials/monitor-pipeline.md) |
+| Distributed micro-batching, CDC, and lakehouse processing | [Data processing patterns](data-processing-patterns.md); these are not deployed here |
+
+The [demo reference](../reference/demos.md) lists commands, inputs, outputs,
+and persisted state.
+
+## Operating and evolving a pipeline
+
+The scripts run on demand and log their results. An Airflow DAG or
+Dagster job could schedule the batch entry point. A CDC-based extension
+could use a tool such as Debezium to capture changes from PostgreSQL's
+write-ahead log and apply them by key.
+
+A scheduled deployment
+would also track the last successful publish time, input and output counts,
+and rejected records. For an event log, compare the consumer offset with
+the log length to measure backlog. An empty batch may mean either that
+there was no new input or that the source stopped delivering data, so
+track source freshness separately.
+
+A reject policy makes validation measurable. For example, a pipeline
+could write invalid orders to a quarantine table with their source key
+and validation reason, then reconcile accepted plus rejected rows against
+the input count. For a data product schema change, validate representative
+producer and consumer fixtures together. With the demo's exact-column
+validation, even an added column requires changing the contract. A breaking
+change can be published under a separate product name during migration
+because the local catalog stores one entry per product name.
+
+The [operating and evolving pipelines](operating-and-evolving.md) explanation
+discusses scheduling, observability, lineage, privacy, and storage formats.
+The linked exercises above use local fixtures rather than a deployed CDC
+connector, scheduler, alerting service, or quarantine store.
